@@ -6,6 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gitdaddy/gitdaddy/internal/auth"
@@ -44,6 +48,51 @@ func TestAPIRegisterLoginRepoAndPushFlow(t *testing.T) {
 	del(t, ts.URL+"/api/repos/alice/demo", token, http.StatusOK)
 	post(t, ts.URL+"/api/logout", token, map[string]string{}, http.StatusOK)
 	get(t, ts.URL+"/api/whoami", token, http.StatusUnauthorized)
+}
+
+func TestNormalGitCommandLinePushAndClone(t *testing.T) {
+	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
+	repoSvc := repo.NewService(repo.NewMemoryStore())
+	jobs := queue.NewMemoryQueue()
+	server := NewServer(authSvc, repoSvc, git.NewService(t.TempDir()), storage.NewLocalObjectStore(t.TempDir()), jobs)
+	ts := httptest.NewServer(server.Routes())
+	defer ts.Close()
+
+	post(t, ts.URL+"/api/register", "", map[string]string{"username": "alice", "email": "a@example.com", "password": "secret"}, http.StatusCreated)
+	login := post(t, ts.URL+"/api/login", "", map[string]string{"username": "alice", "password": "secret"}, http.StatusOK)
+	token := login["token"].(string)
+	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
+
+	work := t.TempDir()
+	source := filepath.Join(work, "source")
+	clone := filepath.Join(work, "clone")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run(t, source, "git", "init", "-b", "main")
+	run(t, source, "git", "config", "user.email", "alice@example.com")
+	run(t, source, "git", "config", "user.name", "Alice")
+	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("# demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, source, "git", "add", "README.md")
+	run(t, source, "git", "commit", "-m", "initial commit")
+	remote := strings.Replace(ts.URL, "http://", "http://alice:secret@", 1) + "/git/alice/demo.git"
+	run(t, source, "git", "remote", "add", "origin", remote)
+	run(t, source, "git", "push", "origin", "main")
+
+	if jobs.Len() != 1 {
+		t.Fatalf("expected one sync job after git push, got %d", jobs.Len())
+	}
+
+	run(t, work, "git", "clone", remote, clone)
+	body, err := os.ReadFile(filepath.Join(clone, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "# demo\n" {
+		t.Fatalf("unexpected cloned README: %q", body)
+	}
 }
 
 func post(t *testing.T, url, token string, body any, status int) map[string]any {
@@ -116,5 +165,15 @@ func raw(t *testing.T, method, url, username, password string, status int) {
 	if res.StatusCode != status {
 		body, _ := io.ReadAll(res.Body)
 		t.Fatalf("expected %d got %d: %s", status, res.StatusCode, body)
+	}
+}
+
+func run(t *testing.T, dir, name string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\n%s", name, args, err, output)
 	}
 }
