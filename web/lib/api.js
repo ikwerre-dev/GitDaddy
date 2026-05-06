@@ -39,4 +39,9 @@ export const gitdaddyApi = {
   repoStats: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/stats`, { token }),
   pulls: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/pulls`, { token }),
   createPull: (token, owner, repo, body) => request(`/api/repos/${owner}/${repo}/pulls`, { method: "POST", token, body }),
+  collaborators: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/collaborators`, { token }),
+  addCollaborator: (token, owner, repo, username, body) =>
+    request(`/api/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`, { method: "PUT", token, body }),
+  removeCollaborator: (token, owner, repo, username) =>
+    request(`/api/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`, { method: "DELETE", token }),
 };

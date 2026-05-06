@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -418,7 +419,22 @@ func (s *Server) listCollaborators(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, permissions)
+	collaborators := make([]map[string]any, 0, len(permissions))
+	for _, permission := range permissions {
+		user, err := s.auth.FindByID(r.Context(), permission.UserID)
+		if err != nil {
+			continue
+		}
+		collaborators = append(collaborators, map[string]any{
+			"user_id":    permission.UserID,
+			"username":   user.Username,
+			"email":      user.Email,
+			"repo_id":    permission.RepoID,
+			"role":       permission.Role,
+			"created_at": user.CreatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, collaborators)
 }
 
 func (s *Server) grantCollaborator(w http.ResponseWriter, r *http.Request) {
@@ -435,11 +451,25 @@ func (s *Server) grantCollaborator(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if req.Role == "" {
+		req.Role = repo.RoleWrite
+	}
+	if collaborator.ID == repository.OwnerID {
+		writeError(w, http.StatusBadRequest, errors.New("repository owner is already an admin"))
+		return
+	}
 	if err := s.repos.Grant(r.Context(), repository.ID, collaborator.ID, req.Role); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "granted"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":   "granted",
+		"user_id":  collaborator.ID,
+		"username": collaborator.Username,
+		"email":    collaborator.Email,
+		"repo_id":  repository.ID,
+		"role":     req.Role,
+	})
 }
 
 func (s *Server) revokeCollaborator(w http.ResponseWriter, r *http.Request) {

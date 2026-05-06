@@ -28,11 +28,21 @@ func TestAPIRegisterLoginRepoAndPushFlow(t *testing.T) {
 	defer ts.Close()
 
 	post(t, ts.URL+"/api/register", "", map[string]string{"username": "alice", "email": "a@example.com", "password": "secret"}, http.StatusCreated)
+	post(t, ts.URL+"/api/register", "", map[string]string{"username": "bob", "email": "b@example.com", "password": "hunter2"}, http.StatusCreated)
 	login := post(t, ts.URL+"/api/login", "", map[string]string{"username": "alice", "password": "secret"}, http.StatusOK)
 	token := login["token"].(string)
 	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "", "", http.StatusUnauthorized)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "alice", "secret", http.StatusOK)
+	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "bob", "hunter2", http.StatusForbidden)
+	put(t, ts.URL+"/api/repos/alice/demo/collaborators/bob", token, map[string]string{"role": "write"}, http.StatusOK)
+	collaborators := getArray(t, ts.URL+"/api/repos/alice/demo/collaborators", token, http.StatusOK)
+	if len(collaborators) != 1 || collaborators[0].(map[string]any)["username"] != "bob" {
+		t.Fatalf("expected bob collaborator response, got %+v", collaborators)
+	}
+	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "bob", "hunter2", http.StatusOK)
+	del(t, ts.URL+"/api/repos/alice/demo/collaborators/bob", token, http.StatusOK)
+	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "bob", "hunter2", http.StatusForbidden)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/../secret.git/info/refs?service=git-upload-pack", "alice", "secret", http.StatusNotFound)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-receive-pack", "", "", http.StatusUnauthorized)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-receive-pack", "alice", "secret", http.StatusOK)
@@ -163,6 +173,11 @@ func post(t *testing.T, url, token string, body any, status int) map[string]any 
 func patch(t *testing.T, url, token string, body any, status int) map[string]any {
 	t.Helper()
 	return requestJSON(t, http.MethodPatch, url, token, body, status)
+}
+
+func put(t *testing.T, url, token string, body any, status int) map[string]any {
+	t.Helper()
+	return requestJSON(t, http.MethodPut, url, token, body, status)
 }
 
 func del(t *testing.T, url, token string, status int) map[string]any {

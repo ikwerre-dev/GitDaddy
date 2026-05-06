@@ -134,6 +134,10 @@ func (s *Service) FindByUsername(ctx context.Context, username string) (User, er
 	return s.users.FindByUsername(ctx, strings.TrimSpace(strings.ToLower(username)))
 }
 
+func (s *Service) FindByID(ctx context.Context, id int64) (User, error) {
+	return s.findByID(ctx, id)
+}
+
 func (s *Service) CreateToken(ctx context.Context, userID int64, name string, ttl time.Duration) (PersonalAccessToken, string, error) {
 	if strings.TrimSpace(name) == "" {
 		return PersonalAccessToken{}, "", errors.New("token name is required")

@@ -15,6 +15,7 @@ export function useGitDaddy() {
   const [commits, setCommits] = useState([]);
   const [tree, setTree] = useState([]);
   const [pulls, setPulls] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
   const [filePreview, setFilePreview] = useState(null);
   const [diffPreview, setDiffPreview] = useState(null);
   const [ref, setRef] = useState("HEAD");
@@ -90,13 +91,14 @@ export function useGitDaddy() {
   async function loadRepo(repo = selected, activeToken = token, nextRef = ref, nextPath = path) {
     if (!repo || !owner) return;
     try {
-      const [detail, branchData, commitData, treeData, stats, pullData] = await Promise.all([
+      const [detail, branchData, commitData, treeData, stats, pullData, collaboratorData] = await Promise.all([
         gitdaddyApi.repo(activeToken, owner, repo.name),
         gitdaddyApi.branches(activeToken, owner, repo.name),
         gitdaddyApi.commits(activeToken, owner, repo.name, nextRef || "HEAD"),
         gitdaddyApi.tree(activeToken, owner, repo.name, nextRef || "HEAD", nextPath || ""),
         gitdaddyApi.repoStats(activeToken, owner, repo.name),
         gitdaddyApi.pulls(activeToken, owner, repo.name),
+        gitdaddyApi.collaborators(activeToken, owner, repo.name).catch(() => []),
       ]);
       const defaultRef = branchData.find((branch) => branch.current)?.name || branchData[0]?.name || "HEAD";
       setRepoDetail(detail.repository);
@@ -105,6 +107,7 @@ export function useGitDaddy() {
       setTree(treeData);
       setRepoStats(stats);
       setPulls(pullData);
+      setCollaborators(collaboratorData);
       setRef(nextRef && nextRef !== "HEAD" ? nextRef : defaultRef);
       setPath(nextPath || "");
       setFilePreview(null);
@@ -115,6 +118,7 @@ export function useGitDaddy() {
       setCommits([]);
       setTree([]);
       setPulls([]);
+      setCollaborators([]);
       setRepoStats(null);
     }
   }
@@ -175,6 +179,26 @@ export function useGitDaddy() {
     }, (pull) => `Opened pull request #${pull.id}`);
   }
 
+  async function addCollaborator(formData) {
+    return run(async () => {
+      const username = String(formData.username || "").trim();
+      const role = formData.role || "write";
+      const collaborator = await gitdaddyApi.addCollaborator(token, owner, selected.name, username, { role });
+      const list = await gitdaddyApi.collaborators(token, owner, selected.name);
+      setCollaborators(list);
+      return collaborator;
+    }, (collaborator) => `Added ${collaborator.username} as ${collaborator.role}`);
+  }
+
+  async function removeCollaborator(username) {
+    return run(async () => {
+      await gitdaddyApi.removeCollaborator(token, owner, selected.name, username);
+      const list = await gitdaddyApi.collaborators(token, owner, selected.name);
+      setCollaborators(list);
+      return { username };
+    }, ({ username }) => `Removed ${username}`);
+  }
+
   async function updateVisibility(visibility) {
     return run(async () => {
       const updated = await gitdaddyApi.updateRepo(token, owner, selected.name, { visibility });
@@ -199,6 +223,7 @@ export function useGitDaddy() {
     activeTab,
     branches,
     busy,
+    collaborators,
     commits,
     diffPreview,
     filePreview,
@@ -220,6 +245,7 @@ export function useGitDaddy() {
     changeRef,
     chooseRepo,
     createBranch,
+    addCollaborator,
     createPullRequest,
     createRepo,
     deleteRepo,
@@ -228,6 +254,7 @@ export function useGitDaddy() {
     logout,
     openDiff,
     openEntry,
+    removeCollaborator,
     setActiveTab,
     setDiffPreview,
     setFilePreview,
