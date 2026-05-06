@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Activity01Icon,
   Add01Icon,
@@ -30,10 +31,11 @@ export function Repository({ state, repo, username }) {
 
   return (
     <main className="min-h-screen bg-[#f6f8fa]">
-      <TopNav user={state.user} onLogout={state.logout} />
-      <div className="flex min-h-[calc(100vh-64px)]">
-        <Sidebar state={state} />
-        <section className="min-w-0 flex-1 px-4 py-6 lg:px-8">
+      <div className="flex min-h-screen">
+        {state.user ? <Sidebar user={state.user} /> : null}
+        <div className="min-w-0 flex-1">
+          <TopNav user={state.user} onLogout={state.logout} />
+          <section className="px-4 py-6 lg:px-8">
           <Message>{state.message}</Message>
           <div className="mx-auto max-w-[1280px]">
             <RepoHeader state={state} repo={repo} clone={clone} owner={owner} />
@@ -42,6 +44,7 @@ export function Repository({ state, repo, username }) {
               onChange={state.setActiveTab}
               commits={state.repoStats?.commits ?? state.commits.length}
               pulls={state.pulls.length}
+              showSettings={Boolean(state.user)}
             />
             <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
               <section className="min-w-0">
@@ -49,20 +52,35 @@ export function Repository({ state, repo, username }) {
                 {state.activeTab === "commits" ? <CommitView state={state} /> : null}
                 {state.activeTab === "branches" ? <BranchView state={state} /> : null}
                 {state.activeTab === "pulls" ? <PullRequestView state={state} /> : null}
-                {state.activeTab === "settings" ? (
+                {state.activeTab === "settings" && state.user ? (
                   <SettingsView state={state} repo={repo} clone={clone} />
                 ) : null}
               </section>
               <RepoAbout state={state} repo={repo} clone={clone} />
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   );
 }
 
 function RepoHeader({ state, repo, clone, owner }) {
+  const [starred, setStarred] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const stars = JSON.parse(localStorage.getItem("gitdaddy_stars") || "[]");
+    setStarred(stars.some((item) => item.owner === owner && item.name === repo.name));
+  }, [owner, repo.name]);
+
+  async function copyClone() {
+    await navigator.clipboard?.writeText(`git clone ${clone}`);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 pb-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -81,40 +99,44 @@ function RepoHeader({ state, repo, clone, owner }) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <RepoButton icon={StarIcon} label="Star" value="0" />
+        <button
+          className={`inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[#d0d7de] px-3 text-sm font-medium hover:bg-[#f3f4f6] ${starred ? "bg-[#fff8c5]" : "bg-[#f6f8fa]"}`}
+          onClick={() => {
+            const stars = JSON.parse(localStorage.getItem("gitdaddy_stars") || "[]");
+            const exists = stars.some((item) => item.owner === owner && item.name === repo.name);
+            const nextStars = exists
+              ? stars.filter((item) => !(item.owner === owner && item.name === repo.name))
+              : [{ owner, name: repo.name, description: repo.description || "", visibility: repo.visibility, starred_at: new Date().toISOString() }, ...stars];
+            localStorage.setItem("gitdaddy_stars", JSON.stringify(nextStars));
+            window.dispatchEvent(new Event("gitdaddy:stars-updated"));
+            setStarred(!exists);
+          }}
+          type="button"
+        >
+          <Icon icon={StarIcon} size={16} />
+          <span className="hidden sm:inline">{starred ? "Starred" : "Star"}</span>
+          <span className="text-xs text-[#57606a]">{starred ? 1 : 0}</span>
+        </button>
         <button
           className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[#d0d7de] bg-[#f6f8fa] px-3 text-sm font-medium hover:bg-[#f3f4f6]"
-          onClick={() => navigator.clipboard?.writeText(`git clone ${clone}`)}
+          onClick={copyClone}
           type="button"
         >
           <Icon icon={Copy01Icon} size={16} />
-          <span className="hidden sm:inline">Code</span>
+          <span className="hidden sm:inline">{copied ? "Copied" : "Code"}</span>
         </button>
       </div>
     </div>
   );
 }
 
-function RepoButton({ icon, label, value }) {
-  return (
-    <button
-      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[#d0d7de] bg-[#f6f8fa] px-3 text-sm font-medium hover:bg-[#f3f4f6]"
-      type="button"
-    >
-      <Icon icon={icon} size={16} />
-      <span className="hidden sm:inline">{label}</span>
-      <span className="text-xs text-[#57606a]">{value}</span>
-    </button>
-  );
-}
-
-function RepoTabs({ active, onChange, commits, pulls }) {
+function RepoTabs({ active, onChange, commits, pulls, showSettings }) {
   const tabs = [
     ["code", CodeFolderIcon, "Code", null],
     ["commits", GitCommitIcon, "Commits", commits],
     ["branches", GitBranchIcon, "Branches", null],
     ["pulls", GitPullRequestIcon, "Pull requests", pulls],
-    ["settings", Settings01Icon, "Settings", null],
+    ...(showSettings ? [["settings", Settings01Icon, "Settings", null]] : []),
   ];
   return (
     <div className="border-b border-[#d0d7de]">
@@ -182,6 +204,16 @@ function CodeView({ state, clone }) {
             Go up
           </button>
         ) : null}
+        {state.user ? (
+          <button
+            className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[#d0d7de] bg-[#f6f8fa] px-3 text-sm font-medium hover:bg-[#f3f4f6]"
+            onClick={() => state.setFilePreview({ path: state.path ? `${state.path}/new-file.txt` : "new-file.txt", content: "" })}
+            type="button"
+          >
+            <Icon icon={Add01Icon} size={16} />
+            New file
+          </button>
+        ) : null}
       </div>
 
       <Panel className="overflow-hidden">
@@ -227,12 +259,16 @@ function CodeView({ state, clone }) {
           <EmptyRepo clone={clone} />
         )}
         {state.filePreview ? (
-          <Preview
-            title={state.filePreview.path}
-            subtitle="File preview"
-            content={state.filePreview.content}
-            onClose={() => state.setFilePreview(null)}
-          />
+          state.user ? (
+            <FileEditor state={state} />
+          ) : (
+            <Preview
+              title={state.filePreview.path}
+              subtitle="File preview"
+              content={state.filePreview.content}
+              onClose={() => state.setFilePreview(null)}
+            />
+          )
         ) : null}
       </Panel>
     </div>
@@ -568,12 +604,13 @@ function CollaboratorsPanel({ state }) {
 }
 
 function RepoAbout({ state, repo, clone }) {
+  const description = String(repo.description || "").trim();
   return (
     <aside className="grid content-start gap-4">
       <Panel className="p-4">
         <strong className="text-sm font-semibold">About</strong>
         <p className="mt-3 text-sm leading-6 text-[#57606a]">
-          Self-hosted Git repository with R2 backup and smart HTTP protocol support.
+          {description || "No description provided."}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="rounded-full bg-[#ddf4ff] px-2 py-1 text-xs font-medium text-[#0969da]">
@@ -617,6 +654,96 @@ function RepoAbout({ state, repo, clone }) {
       </Panel>
     </aside>
   );
+}
+
+function FileEditor({ state }) {
+  const [filePath, setFilePath] = useState(state.filePreview.path || "");
+  const [content, setContent] = useState(state.filePreview.content || "");
+  const defaultMessage = state.filePreview.content ? `Update ${filePath}` : `Create ${filePath}`;
+  const lineNumbers = content.split("\n").map((_, index) => index + 1);
+  const language = languageFromPath(filePath);
+
+  return (
+    <div className="border-t border-[#d0d7de]">
+      <div className="flex items-center justify-between gap-3 border-b border-[#d0d7de] bg-[#f6f8fa] px-4 py-2">
+        <div>
+          <strong className="text-sm">Edit file</strong>
+          <p className="text-xs text-[#57606a]">{state.ref || "main"}</p>
+        </div>
+        <button
+          className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border border-[#d0d7de] bg-white px-3 text-sm font-medium hover:bg-[#f3f4f6]"
+          onClick={() => state.setFilePreview(null)}
+          type="button"
+        >
+          Close
+        </button>
+      </div>
+      <form
+        className="grid gap-3 p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          state.commitFile(Object.fromEntries(new FormData(event.currentTarget)));
+        }}
+      >
+        <Input name="path" value={filePath} onChange={(event) => setFilePath(event.target.value)} required />
+        <div className="overflow-hidden rounded-lg border border-[#30363d] bg-[#0d1117] shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#30363d] bg-[#161b22] px-3 py-2">
+            <div className="min-w-0">
+              <strong className="block truncate text-xs font-semibold text-[#e6edf3]">{filePath || "new-file.txt"}</strong>
+              <span className="text-xs text-[#7d8590]">{language}</span>
+            </div>
+            <span className="rounded border border-[#30363d] px-2 py-0.5 text-xs font-semibold text-[#7d8590]">
+              {lineNumbers.length} lines
+            </span>
+          </div>
+          <div className="grid max-h-[560px] min-h-[380px] grid-cols-[52px_1fr] overflow-hidden">
+            <pre className="select-none overflow-hidden border-r border-[#30363d] bg-[#0b1017] px-3 py-4 text-right font-mono text-sm leading-6 text-[#6e7681]">
+              {lineNumbers.join("\n")}
+            </pre>
+            <textarea
+              className="min-h-[380px] resize-y overflow-auto bg-[#0d1117] px-4 py-4 font-mono text-sm leading-6 text-[#e6edf3] caret-[#58a6ff] outline-none placeholder:text-[#6e7681] [tab-size:2]"
+              name="content"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="// Start typing..."
+              spellCheck={false}
+            />
+          </div>
+        </div>
+        <Input name="message" defaultValue={defaultMessage} placeholder="Commit message" required />
+        <input name="branch" type="hidden" value={state.ref || "main"} />
+        <div className="flex justify-end">
+          <button
+            className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1f883d] bg-[#1f883d] px-3 text-sm font-medium text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={state.busy}
+            type="submit"
+          >
+            <Icon icon={GitCommitIcon} size={16} />
+            Commit changes
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function languageFromPath(path) {
+  const ext = String(path || "").split(".").pop()?.toLowerCase();
+  const languages = {
+    css: "CSS",
+    go: "Go",
+    html: "HTML",
+    js: "JavaScript",
+    json: "JSON",
+    jsx: "React JSX",
+    md: "Markdown",
+    py: "Python",
+    ts: "TypeScript",
+    tsx: "React TSX",
+    yml: "YAML",
+    yaml: "YAML",
+  };
+  return languages[ext] || "Plain text";
 }
 
 function AboutLine({ icon, text }) {

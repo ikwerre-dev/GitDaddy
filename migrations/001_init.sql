@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS repositories (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   visibility TEXT NOT NULL CHECK (visibility IN ('private', 'public')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

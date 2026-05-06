@@ -10,6 +10,7 @@ export function useGitDaddy() {
   const [selected, setSelected] = useState(null);
   const [repoDetail, setRepoDetail] = useState(null);
   const [platformStats, setPlatformStats] = useState(null);
+  const [notifications, setNotifications] = useState([]);
   const [repoStats, setRepoStats] = useState(null);
   const [branches, setBranches] = useState([]);
   const [commits, setCommits] = useState([]);
@@ -81,10 +82,15 @@ export function useGitDaddy() {
   }
 
   async function loadRepos(activeToken = token) {
-    const [repoList, stats] = await Promise.all([gitdaddyApi.repos(activeToken), gitdaddyApi.stats(activeToken)]);
+    const [repoList, stats, noteList] = await Promise.all([
+      gitdaddyApi.repos(activeToken),
+      gitdaddyApi.stats(activeToken),
+      gitdaddyApi.notifications(activeToken).catch(() => []),
+    ]);
     const nextRepos = Array.isArray(repoList) ? repoList : [];
     setRepos(nextRepos);
     setPlatformStats(stats);
+    setNotifications(Array.isArray(noteList) ? noteList : []);
     if (!selected && nextRepos.length > 0) setSelected(nextRepos[0]);
     return nextRepos;
   }
@@ -136,6 +142,20 @@ export function useGitDaddy() {
       setSelected(repo);
       return repo;
     }, (repo) => `Created ${repo.name}`);
+  }
+
+  async function commitFile(formData) {
+    return run(async () => {
+      const commit = await gitdaddyApi.commitFile(token, owner, selected.name, {
+        path: formData.path,
+        content: formData.content,
+        message: formData.message,
+        branch: formData.branch || ref || "main",
+      });
+      await loadRepos(token);
+      await loadRepo(selected, token, formData.branch || ref || "main", path);
+      return commit;
+    }, (commit) => `Committed ${commit.hash.slice(0, 7)}`);
   }
 
   async function chooseRepo(repo) {
@@ -235,6 +255,7 @@ export function useGitDaddy() {
     filePreview,
     filteredRepos,
     message,
+    notifications,
     owner,
     path,
     platformStats,
@@ -254,6 +275,7 @@ export function useGitDaddy() {
     addCollaborator,
     createPullRequest,
     createRepo,
+    commitFile,
     deleteRepo,
     loadRepo,
     login,

@@ -27,6 +27,7 @@ type Server struct {
 	queue   queue.Queue
 	metrics metrics
 	limits  *rateLimiter
+	notes   notificationStore
 }
 
 func NewServer(auth *auth.Service, repos *repo.Service, git *git.Service, objects storage.ObjectStore, queue queue.Queue) *Server {
@@ -43,6 +44,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/whoami", s.whoami)
 	mux.HandleFunc("GET /api/stats", s.platformStats)
+	mux.HandleFunc("GET /api/notifications", s.notifications)
+	mux.HandleFunc("GET /api/search/repos", s.searchRepos)
+	mux.HandleFunc("GET /api/users/{username}/repos", s.publicUserRepos)
 	mux.HandleFunc("POST /api/tokens", s.createToken)
 	mux.HandleFunc("GET /api/tokens", s.listTokens)
 	mux.HandleFunc("DELETE /api/tokens/{id}", s.deleteToken)
@@ -58,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", s.repoCommits)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/tree", s.repoTree)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/file", s.repoFile)
+	mux.HandleFunc("PUT /api/repos/{owner}/{repo}/file", s.commitFile)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/diff", s.repoDiff)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/stats", s.repoStats)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/collaborators", s.listCollaborators)
@@ -130,16 +135,82 @@ func (s *Server) platformStats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	repositories, _ := s.repos.ListByOwner(r.Context(), user.ID)
+	totalBranches := 0
+	totalCommits := 0
+	for _, repository := range repositories {
+		stats, err := s.git.Stats(r.Context(), user.Username, repository.Name)
+		if err != nil {
+			continue
+		}
+		totalBranches += stats.Branches
+		totalCommits += stats.Commits
+	}
 	pendingJobs := 0
 	if sized, ok := s.queue.(interface{ Len() int }); ok {
 		pendingJobs = sized.Len()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"repositories":  repoCount,
-		"pending_jobs":  pendingJobs,
-		"storage":       "async",
-		"git_transport": "smart-http",
+		"repositories":   repoCount,
+		"total_branches": totalBranches,
+		"total_commits":  totalCommits,
+		"pending_jobs":   pendingJobs,
+		"storage":        "async",
+		"git_transport":  "smart-http",
 	})
+}
+
+func (s *Server) notifications(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.notes.list(user.ID, 20))
+}
+
+func (s *Server) publicUserRepos(w http.ResponseWriter, r *http.Request) {
+	user, err := s.auth.FindByUsername(r.Context(), r.PathValue("username"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	repositories, err := s.repos.ListByOwner(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	publicRepos := []repo.Repository{}
+	for _, repository := range repositories {
+		if repository.Visibility == "public" {
+			publicRepos = append(publicRepos, repository)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":         user,
+		"repositories": publicRepos,
+	})
+}
+
+func (s *Server) searchRepos(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	repositories, err := s.repos.SearchPublic(r.Context(), query, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	results := []map[string]any{}
+	for _, repository := range repositories {
+		owner, err := s.auth.FindByID(r.Context(), repository.OwnerID)
+		if err != nil {
+			continue
+		}
+		results = append(results, map[string]any{
+			"owner":      owner.Username,
+			"repository": repository,
+			"scope":      "public",
+		})
+	}
+	writeJSON(w, http.StatusOK, results)
 }
 
 func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
@@ -201,11 +272,16 @@ func (s *Server) createRepo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req struct{ Name, Visibility string }
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Visibility  string `json:"visibility"`
+		AddReadme   bool   `json:"add_readme"`
+	}
 	if !decode(w, r, &req) {
 		return
 	}
-	repository, err := s.repos.Create(r.Context(), user.ID, req.Name, req.Visibility)
+	repository, err := s.repos.CreateWithDescription(r.Context(), user.ID, req.Name, req.Visibility, req.Description)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -214,6 +290,17 @@ func (s *Server) createRepo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if req.AddReadme {
+		readme := "# " + repository.Name + "\n\n"
+		if repository.Description != "" {
+			readme += repository.Description + "\n"
+		}
+		if _, err := s.git.CommitFile(r.Context(), user.Username, repository.Name, "main", "README.md", readme, "Initial README", user.Username, user.Email); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	s.addNotification(user.ID, repository.ID, user.Username, repository.Name, "Repository created", fmt.Sprintf("%s created %s", user.Username, repository.Name))
 	writeJSON(w, http.StatusCreated, repository)
 }
 
@@ -388,6 +475,36 @@ func (s *Server) repoFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"content": content})
 }
 
+func (s *Server) commitFile(w http.ResponseWriter, r *http.Request) {
+	owner, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleWrite) {
+		return
+	}
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+		Message string `json:"message"`
+		Branch  string `json:"branch"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Branch == "" {
+		req.Branch = r.URL.Query().Get("ref")
+	}
+	commit, err := s.git.CommitFile(r.Context(), owner.Username, repository.Name, req.Branch, req.Path, req.Content, req.Message, user.Username, user.Email)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "File committed", fmt.Sprintf("%s committed %s", user.Username, req.Path))
+	writeJSON(w, http.StatusOK, commit)
+}
+
 func (s *Server) repoDiff(w http.ResponseWriter, r *http.Request) {
 	owner, repository, ok := s.resolveRepo(w, r)
 	if !ok {
@@ -533,6 +650,7 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.queue.Enqueue(r.Context(), queue.Job{Type: "repo.sync", Attrs: map[string]string{"owner": owner.Username, "repo": repository.Name}})
+	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "Git push received", fmt.Sprintf("New Git updates pushed to %s", repository.Name))
 }
 
 func (s *Server) resolveRepo(w http.ResponseWriter, r *http.Request) (auth.User, repo.Repository, bool) {
@@ -726,7 +844,7 @@ func cors(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -816,4 +934,59 @@ func (l *rateLimiter) allow(key string, limit int, window time.Duration) bool {
 	state.count++
 	l.attempts[key] = state
 	return true
+}
+
+type notification struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	RepoID    int64     `json:"repo_id"`
+	Owner     string    `json:"owner"`
+	Repo      string    `json:"repo"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type notificationStore struct {
+	mu     sync.Mutex
+	nextID int64
+	items  []notification
+}
+
+func (s *Server) addNotification(userID, repoID int64, owner, repoName, title, body string) {
+	s.notes.mu.Lock()
+	defer s.notes.mu.Unlock()
+	s.notes.nextID++
+	s.notes.items = append([]notification{{
+		ID:        s.notes.nextID,
+		UserID:    userID,
+		RepoID:    repoID,
+		Owner:     owner,
+		Repo:      repoName,
+		Title:     title,
+		Body:      body,
+		CreatedAt: time.Now().UTC(),
+	}}, s.notes.items...)
+	if len(s.notes.items) > 200 {
+		s.notes.items = s.notes.items[:200]
+	}
+}
+
+func (n *notificationStore) list(userID int64, limit int) []notification {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if limit <= 0 {
+		limit = 20
+	}
+	out := []notification{}
+	for _, item := range n.items {
+		if item.UserID != userID {
+			continue
+		}
+		out = append(out, item)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
 }

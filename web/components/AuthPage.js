@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { GitBranchIcon, ShieldKeyIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "./Icon";
 import { Input, Message } from "./ui";
 
 export function AuthPage({ state }) {
   const [mode, setMode] = useState("login");
+  const router = useRouter();
 
   return (
     <main className="min-h-screen bg-[#f6f8fa]">
@@ -44,10 +46,11 @@ export function AuthPage({ state }) {
               className="grid min-h-[500px] content-center gap-4"
               onSubmit={async (event) => {
                 event.preventDefault();
-                await state.login(
+                const result = await state.login(
                   Object.fromEntries(new FormData(event.currentTarget)),
                   mode
                 );
+                if (result) router.replace("/dashboard");
               }}
             >
               <div>

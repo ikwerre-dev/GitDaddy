@@ -23,6 +23,9 @@ export const gitdaddyApi = {
   login: (body) => request("/api/login", { method: "POST", body }),
   logout: (token) => request("/api/logout", { method: "POST", token }),
   stats: (token) => request("/api/stats", { token }),
+  notifications: (token) => request("/api/notifications", { token }),
+  searchRepos: (query) => request(`/api/search/repos?q=${encodeURIComponent(query)}`),
+  publicUserRepos: (username) => request(`/api/users/${encodeURIComponent(username)}/repos`),
   repos: (token) => request("/api/repos", { token }),
   createRepo: (token, body) => request("/api/repos", { method: "POST", token, body }),
   repo: (token, owner, repo) => request(`/api/repos/${owner}/${repo}`, { token }),
@@ -35,6 +38,8 @@ export const gitdaddyApi = {
     request(`/api/repos/${owner}/${repo}/tree?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}`, { token }),
   file: (token, owner, repo, ref = "HEAD", path = "") =>
     request(`/api/repos/${owner}/${repo}/file?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}`, { token }),
+  commitFile: (token, owner, repo, body) =>
+    request(`/api/repos/${owner}/${repo}/file`, { method: "PUT", token, body }),
   diff: (token, owner, repo, commit) => request(`/api/repos/${owner}/${repo}/diff?commit=${encodeURIComponent(commit)}`, { token }),
   repoStats: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/stats`, { token }),
   pulls: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/pulls`, { token }),

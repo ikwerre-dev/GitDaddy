@@ -12,16 +12,18 @@ import (
 var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 type Repository struct {
-	ID         int64     `json:"id"`
-	Name       string    `json:"name"`
-	OwnerID    int64     `json:"owner_id"`
-	Visibility string    `json:"visibility"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	OwnerID     int64     `json:"owner_id"`
+	Visibility  string    `json:"visibility"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Store interface {
 	Create(context.Context, Repository) (Repository, error)
 	ListByOwner(context.Context, int64) ([]Repository, error)
+	SearchPublic(context.Context, string, int) ([]Repository, error)
 	FindByOwnerAndName(context.Context, int64, string) (Repository, error)
 	UpdateVisibility(context.Context, int64, string, string) (Repository, error)
 	Delete(context.Context, int64, string) error
@@ -85,6 +87,10 @@ func NewServiceWithStores(store Store, permissions PermissionStore, pulls PullRe
 }
 
 func (s *Service) Create(ctx context.Context, ownerID int64, name, visibility string) (Repository, error) {
+	return s.CreateWithDescription(ctx, ownerID, name, visibility, "")
+}
+
+func (s *Service) CreateWithDescription(ctx context.Context, ownerID int64, name, visibility, description string) (Repository, error) {
 	name = strings.TrimSpace(name)
 	if !validRepoName.MatchString(name) {
 		return Repository{}, errors.New("repository name may contain only letters, numbers, dot, underscore, and dash")
@@ -96,15 +102,23 @@ func (s *Service) Create(ctx context.Context, ownerID int64, name, visibility st
 		return Repository{}, errors.New("visibility must be private or public")
 	}
 	return s.store.Create(ctx, Repository{
-		Name:       name,
-		OwnerID:    ownerID,
-		Visibility: visibility,
-		CreatedAt:  time.Now().UTC(),
+		Name:        name,
+		Description: strings.TrimSpace(description),
+		OwnerID:     ownerID,
+		Visibility:  visibility,
+		CreatedAt:   time.Now().UTC(),
 	})
 }
 
 func (s *Service) ListByOwner(ctx context.Context, ownerID int64) ([]Repository, error) {
 	return s.store.ListByOwner(ctx, ownerID)
+}
+
+func (s *Service) SearchPublic(ctx context.Context, query string, limit int) ([]Repository, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	return s.store.SearchPublic(ctx, strings.TrimSpace(query), limit)
 }
 
 func (s *Service) FindByOwnerAndName(ctx context.Context, ownerID int64, name string) (Repository, error) {
@@ -234,6 +248,26 @@ func (s *MemoryStore) ListByOwner(_ context.Context, ownerID int64) ([]Repositor
 	for _, repo := range s.repos {
 		if repo.OwnerID == ownerID {
 			repos = append(repos, repo)
+		}
+	}
+	return repos, nil
+}
+
+func (s *MemoryStore) SearchPublic(_ context.Context, query string, limit int) ([]Repository, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	query = strings.ToLower(strings.TrimSpace(query))
+	repos := []Repository{}
+	for _, repository := range s.repos {
+		if repository.Visibility != "public" {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(repository.Name), query) && !strings.Contains(strings.ToLower(repository.Description), query) {
+			continue
+		}
+		repos = append(repos, repository)
+		if len(repos) >= limit {
+			break
 		}
 	}
 	return repos, nil

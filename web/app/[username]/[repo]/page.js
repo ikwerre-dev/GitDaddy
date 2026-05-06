@@ -1,86 +1,155 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Repository } from "../../../components/Repository";
-import { useGitDaddy } from "../../../hooks/useGitDaddy";
 import { TopNav } from "../../../components/TopNav";
-import { Sidebar } from "../../../components/Sidebar";
-import Link from "next/link";
+import { useGitDaddy } from "../../../hooks/useGitDaddy";
+import { gitdaddyApi } from "../../../lib/api";
 
 export default function RepoPage() {
   const params = useParams();
-  const state = useGitDaddy();
-  const [notFound, setNotFound] = useState(false);
+  const sessionState = useGitDaddy();
+  const [publicData, setPublicData] = useState({
+    repo: null,
+    branches: [],
+    commits: [],
+    tree: [],
+    pulls: [],
+    repoStats: null,
+    filePreview: null,
+    diffPreview: null,
+    ref: "HEAD",
+    path: "",
+    activeTab: "code",
+    message: "",
+    notFound: false,
+  });
 
   useEffect(() => {
-    // Find and select the repo based on URL params
-    if (state.token && state.user && params.username && params.repo && state.repos.length > 0) {
-      const repo = state.repos.find((r) => r.name === params.repo);
-      if (repo && state.selected?.name !== repo.name) {
-        state.chooseRepo(repo);
-        setNotFound(false);
-      } else if (!repo) {
-        setNotFound(true);
+    let active = true;
+    async function load() {
+      const requestToken = sessionState.token || "";
+      try {
+        const [detail, branchData, commitData, treeData, stats, pullData] = await Promise.all([
+          gitdaddyApi.repo(requestToken, params.username, params.repo),
+          gitdaddyApi.branches(requestToken, params.username, params.repo),
+          gitdaddyApi.commits(requestToken, params.username, params.repo, publicData.ref || "HEAD"),
+          gitdaddyApi.tree(requestToken, params.username, params.repo, publicData.ref || "HEAD", publicData.path || ""),
+          gitdaddyApi.repoStats(requestToken, params.username, params.repo),
+          gitdaddyApi.pulls(requestToken, params.username, params.repo).catch(() => []),
+        ]);
+        if (!active) return;
+        const branches = Array.isArray(branchData) ? branchData : [];
+        const defaultRef = branches.find((branch) => branch.current)?.name || branches[0]?.name || "HEAD";
+        setPublicData((current) => ({
+          ...current,
+          repo: detail.repository,
+          branches,
+          commits: Array.isArray(commitData) ? commitData : [],
+          tree: Array.isArray(treeData) ? treeData : [],
+          pulls: Array.isArray(pullData) ? pullData : [],
+          repoStats: stats,
+          ref: current.ref === "HEAD" ? defaultRef : current.ref,
+          notFound: false,
+          message: "",
+        }));
+      } catch (error) {
+        if (active) setPublicData((current) => ({ ...current, notFound: true, message: error.message }));
       }
     }
-  }, [params.username, params.repo, state.token, state.user, state.repos]);
+    load();
+    return () => {
+      active = false;
+    };
+  }, [params.username, params.repo, publicData.ref, publicData.path, sessionState.token]);
 
-  if (!state.token || !state.user) {
+  const publicState = useMemo(() => ({
+    ...sessionState,
+    activeTab: publicData.activeTab,
+    branches: publicData.branches,
+    commits: publicData.commits,
+    collaborators: [],
+    diffPreview: publicData.diffPreview,
+    filePreview: publicData.filePreview,
+    message: publicData.message || sessionState.message,
+    owner: params.username,
+    path: publicData.path,
+    pulls: publicData.pulls,
+    ref: publicData.ref,
+    repoStats: publicData.repoStats,
+    selected: publicData.repo,
+    tree: publicData.tree,
+    user: sessionState.user,
+    changeRef: async (nextRef) => setPublicData((current) => ({ ...current, ref: nextRef, path: "" })),
+    commitFile: async (formData) => {
+      try {
+        const commit = await gitdaddyApi.commitFile(sessionState.token || "", params.username, params.repo, {
+          path: formData.path,
+          content: formData.content,
+          message: formData.message,
+          branch: formData.branch || publicData.ref || "main",
+        });
+        setPublicData((current) => ({
+          ...current,
+          message: `Committed ${commit.hash.slice(0, 7)}`,
+          filePreview: null,
+        }));
+        return commit;
+      } catch (error) {
+        setPublicData((current) => ({ ...current, message: error.message }));
+        return null;
+      }
+    },
+    openEntry: async (entry) => {
+      if (entry.type === "tree") {
+        setPublicData((current) => ({ ...current, path: entry.path }));
+        return;
+      }
+      try {
+        const result = await gitdaddyApi.file(sessionState.token || "", params.username, params.repo, publicData.ref || "HEAD", entry.path);
+        setPublicData((current) => ({ ...current, filePreview: { path: entry.path, content: result.content } }));
+      } catch (error) {
+        setPublicData((current) => ({ ...current, message: error.message }));
+      }
+    },
+    openDiff: async (commit) => {
+      try {
+        const result = await gitdaddyApi.diff(sessionState.token || "", params.username, params.repo, commit.hash);
+        setPublicData((current) => ({ ...current, diffPreview: { hash: commit.hash, diff: result.diff } }));
+      } catch (error) {
+        setPublicData((current) => ({ ...current, message: error.message }));
+      }
+    },
+    setActiveTab: (tab) => setPublicData((current) => ({ ...current, activeTab: tab })),
+    setDiffPreview: (value) => setPublicData((current) => ({ ...current, diffPreview: value })),
+    setFilePreview: (value) => setPublicData((current) => ({ ...current, filePreview: value })),
+    upPath: async () => setPublicData((current) => ({ ...current, path: current.path.split("/").slice(0, -1).join("/") })),
+  }), [sessionState, publicData, params.username, params.repo]);
+
+  if (publicData.notFound) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f6f8fa]">
-        <p className="text-[#57606a]">Loading...</p>
-      </div>
-    );
-  }
-
-  const repo = state.repoDetail || state.selected;
-
-  if (notFound) {
-    return (
-      <main className="min-h-screen bg-[#f6f8fa]">
-        <TopNav user={state.user} onLogout={state.logout} />
-        <div className="flex min-h-[calc(100vh-64px)]">
-          <Sidebar state={state} />
-          <section className="flex-1 px-4 py-6 lg:px-8">
-            <div className="mx-auto max-w-[1280px]">
-              <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
-                <div className="text-8xl">🔍</div>
-                <h1 className="mt-6 text-3xl font-bold">Repository not found</h1>
-                <p className="mt-3 text-lg text-[#57606a]">
-                  The repository <strong>{params.username}/{params.repo}</strong> doesn't exist or you don't have access to view it.
-                </p>
-                <div className="mt-6 flex gap-3">
-                  <Link
-                    href={`/${params.username}`}
-                    className="inline-flex h-10 items-center justify-center rounded-md border border-[#d0d7de] bg-white px-4 text-sm font-medium hover:bg-[#f6f8fa]"
-                  >
-                    View {params.username}'s profile
-                  </Link>
-                  <Link
-                    href="/dashboard"
-                    className="inline-flex h-10 items-center justify-center rounded-md border border-[#0969da] bg-[#0969da] px-4 text-sm font-medium text-white hover:bg-[#0860ca]"
-                  >
-                    Go to Dashboard
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
+      <main className="min-h-screen bg-[#f7f8f4]">
+        <TopNav user={sessionState.user} onLogout={sessionState.logout} />
+        <section className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 text-center">
+          <div>
+            <h1 className="text-3xl font-black">Repository not found</h1>
+            <p className="mt-3 text-neutral-600">
+              {params.username}/{params.repo} is private, missing, or unavailable.
+            </p>
+          </div>
+        </section>
       </main>
     );
   }
 
-  if (!repo) {
+  if (!publicData.repo) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f6f8fa]">
-        <div className="text-center">
-          <p className="text-lg text-[#57606a]">Loading repository...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f8f4]">
+        <p className="font-semibold text-neutral-500">Loading repository...</p>
       </div>
     );
   }
 
-  return <Repository state={state} repo={repo} username={params.username} />;
+  return <Repository state={publicState} repo={publicData.repo} username={params.username} />;
 }

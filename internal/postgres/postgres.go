@@ -76,10 +76,12 @@ CREATE TABLE IF NOT EXISTS personal_access_tokens (
 CREATE TABLE IF NOT EXISTS repositories (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   visibility TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL
 );
+ALTER TABLE repositories ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS repositories_owner_lower_name_idx ON repositories(owner_id, lower(name));
 CREATE TABLE IF NOT EXISTS permissions (
   repo_id BIGINT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
@@ -204,9 +206,9 @@ func (s *Store) DeleteTokenCompat(ctx context.Context, userID, tokenID int64) er
 
 func (s *Store) CreateRepo(ctx context.Context, repository repo.Repository) (repo.Repository, error) {
 	err := s.db.QueryRowContext(ctx, `
-INSERT INTO repositories (name, owner_id, visibility, created_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id`, repository.Name, repository.OwnerID, repository.Visibility, repository.CreatedAt).Scan(&repository.ID)
+INSERT INTO repositories (name, description, owner_id, visibility, created_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id`, repository.Name, repository.Description, repository.OwnerID, repository.Visibility, repository.CreatedAt).Scan(&repository.ID)
 	if err != nil {
 		return repo.Repository{}, err
 	}
@@ -214,7 +216,7 @@ RETURNING id`, repository.Name, repository.OwnerID, repository.Visibility, repos
 }
 
 func (s *Store) ListByOwner(ctx context.Context, ownerID int64) ([]repo.Repository, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_id, visibility, created_at FROM repositories WHERE owner_id = $1 ORDER BY created_at DESC`, ownerID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, description, owner_id, visibility, created_at FROM repositories WHERE owner_id = $1 ORDER BY created_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +224,30 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID int64) ([]repo.Reposito
 	repos := []repo.Repository{}
 	for rows.Next() {
 		var repository repo.Repository
-		if err := rows.Scan(&repository.ID, &repository.Name, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt); err != nil {
+		if err := rows.Scan(&repository.ID, &repository.Name, &repository.Description, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt); err != nil {
+			return nil, err
+		}
+		repos = append(repos, repository)
+	}
+	return repos, rows.Err()
+}
+
+func (s *Store) SearchPublic(ctx context.Context, query string, limit int) ([]repo.Repository, error) {
+	pattern := "%" + query + "%"
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, name, description, owner_id, visibility, created_at
+FROM repositories
+WHERE visibility = 'public' AND ($1 = '' OR name ILIKE $2 OR description ILIKE $2)
+ORDER BY created_at DESC
+LIMIT $3`, query, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	repos := []repo.Repository{}
+	for rows.Next() {
+		var repository repo.Repository
+		if err := rows.Scan(&repository.ID, &repository.Name, &repository.Description, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt); err != nil {
 			return nil, err
 		}
 		repos = append(repos, repository)
@@ -232,8 +257,8 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID int64) ([]repo.Reposito
 
 func (s *Store) FindByOwnerAndName(ctx context.Context, ownerID int64, name string) (repo.Repository, error) {
 	var repository repo.Repository
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, owner_id, visibility, created_at FROM repositories WHERE owner_id = $1 AND lower(name) = lower($2)`, ownerID, name).
-		Scan(&repository.ID, &repository.Name, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, description, owner_id, visibility, created_at FROM repositories WHERE owner_id = $1 AND lower(name) = lower($2)`, ownerID, name).
+		Scan(&repository.ID, &repository.Name, &repository.Description, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt)
 	if err != nil {
 		return repo.Repository{}, err
 	}
@@ -244,8 +269,8 @@ func (s *Store) UpdateVisibility(ctx context.Context, ownerID int64, name, visib
 	var repository repo.Repository
 	err := s.db.QueryRowContext(ctx, `
 UPDATE repositories SET visibility = $3 WHERE owner_id = $1 AND lower(name) = lower($2)
-RETURNING id, name, owner_id, visibility, created_at`, ownerID, name, visibility).
-		Scan(&repository.ID, &repository.Name, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt)
+RETURNING id, name, description, owner_id, visibility, created_at`, ownerID, name, visibility).
+		Scan(&repository.ID, &repository.Name, &repository.Description, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt)
 	if err != nil {
 		return repo.Repository{}, err
 	}
@@ -376,6 +401,10 @@ func (s *RepoStore) Create(ctx context.Context, repository repo.Repository) (rep
 
 func (s *RepoStore) ListByOwner(ctx context.Context, ownerID int64) ([]repo.Repository, error) {
 	return s.store.ListByOwner(ctx, ownerID)
+}
+
+func (s *RepoStore) SearchPublic(ctx context.Context, query string, limit int) ([]repo.Repository, error) {
+	return s.store.SearchPublic(ctx, query, limit)
 }
 
 func (s *RepoStore) FindByOwnerAndName(ctx context.Context, ownerID int64, name string) (repo.Repository, error) {

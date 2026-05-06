@@ -117,6 +117,89 @@ func (s *Service) InitBare(ctx context.Context, owner, name string) error {
 	return exec.CommandContext(ctx, "git", "--git-dir", path, "config", "http.receivepack", "true").Run()
 }
 
+func (s *Service) CommitFile(ctx context.Context, owner, name, branch, filePath, content, message, authorName, authorEmail string) (Commit, error) {
+	repoPath, err := s.repoPath(owner, name)
+	if err != nil {
+		return Commit{}, err
+	}
+	branch = strings.TrimSpace(branch)
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+	filePath = strings.Trim(filePath, "/")
+	if filePath == "" || unsafeTreePath(filePath) {
+		return Commit{}, errors.New("invalid file path")
+	}
+	if err := exec.CommandContext(ctx, "git", "check-ref-format", "--branch", branch).Run(); err != nil {
+		return Commit{}, errors.New("invalid branch name")
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "Update " + filePath
+	}
+	if authorName = strings.TrimSpace(authorName); authorName == "" {
+		authorName = owner
+	}
+	if authorEmail = strings.TrimSpace(authorEmail); authorEmail == "" {
+		authorEmail = owner + "@gitdaddy.local"
+	}
+
+	indexFile, err := os.CreateTemp("", "gitdaddy-index-*")
+	if err != nil {
+		return Commit{}, err
+	}
+	indexPath := indexFile.Name()
+	_ = indexFile.Close()
+	_ = os.Remove(indexPath)
+	defer os.Remove(indexPath)
+
+	refName := "refs/heads/" + branch
+	parent := strings.TrimSpace(commandOutput(ctx, repoPath, nil, "rev-parse", "--verify", refName))
+	env := append(os.Environ(), "GIT_INDEX_FILE="+indexPath)
+	if parent != "" {
+		if err := gitCmd(ctx, repoPath, env, nil, "read-tree", parent); err != nil {
+			return Commit{}, err
+		}
+	}
+
+	blobHash, err := gitCmdOutput(ctx, repoPath, env, strings.NewReader(content), "hash-object", "-w", "--stdin")
+	if err != nil {
+		return Commit{}, err
+	}
+	blobHash = strings.TrimSpace(blobHash)
+	if err := gitCmd(ctx, repoPath, env, nil, "update-index", "--add", "--cacheinfo", "100644,"+blobHash+","+filePath); err != nil {
+		return Commit{}, err
+	}
+	treeHash, err := gitCmdOutput(ctx, repoPath, env, nil, "write-tree")
+	if err != nil {
+		return Commit{}, err
+	}
+	args := []string{"commit-tree", strings.TrimSpace(treeHash)}
+	if parent != "" {
+		args = append(args, "-p", parent)
+	}
+	args = append(args, "-m", message)
+	commitEnv := append(env,
+		"GIT_AUTHOR_NAME="+authorName,
+		"GIT_AUTHOR_EMAIL="+authorEmail,
+		"GIT_COMMITTER_NAME="+authorName,
+		"GIT_COMMITTER_EMAIL="+authorEmail,
+	)
+	commitHash, err := gitCmdOutput(ctx, repoPath, commitEnv, nil, args...)
+	if err != nil {
+		return Commit{}, err
+	}
+	commitHash = strings.TrimSpace(commitHash)
+	if err := gitCmd(ctx, repoPath, env, nil, "update-ref", refName, commitHash); err != nil {
+		return Commit{}, err
+	}
+	commits, err := s.Commits(ctx, owner, name, commitHash, 1)
+	if err != nil || len(commits) == 0 {
+		return Commit{Hash: commitHash, Author: authorName, Email: authorEmail, Subject: message}, nil
+	}
+	return commits[0], nil
+}
+
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
@@ -457,4 +540,32 @@ func unsafeTreePath(value string) bool {
 
 func unsafeRevision(value string) bool {
 	return strings.ContainsAny(value, " \t\n\r:~^?*[\\") || strings.Contains(value, "..")
+}
+
+func gitCmd(ctx context.Context, gitDir string, env []string, stdin io.Reader, args ...string) error {
+	_, err := gitCmdOutput(ctx, gitDir, env, stdin, args...)
+	return err
+}
+
+func gitCmdOutput(ctx context.Context, gitDir string, env []string, stdin io.Reader, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--git-dir", gitDir}, args...)...)
+	if env != nil {
+		cmd.Env = env
+	}
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+func commandOutput(ctx context.Context, gitDir string, env []string, args ...string) string {
+	out, err := gitCmdOutput(ctx, gitDir, env, nil, args...)
+	if err != nil {
+		return ""
+	}
+	return out
 }
