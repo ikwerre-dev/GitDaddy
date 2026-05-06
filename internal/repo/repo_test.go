@@ -77,3 +77,12 @@ func TestRejectsUnsafeRepositoryNames(t *testing.T) {
 		t.Fatal("expected invalid repository name error")
 	}
 }
+
+func TestRejectsReservedRepositoryNames(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	for _, name := range []string{"dashboard", "settings", "stars", "pulls", "issues"} {
+		if _, err := service.Create(context.Background(), 1, name, "private"); err == nil {
+			t.Fatalf("expected reserved repository name %q to be rejected", name)
+		}
+	}
+}

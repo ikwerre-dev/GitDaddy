@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gitdaddy/gitdaddy/internal/names"
 )
 
 var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -94,6 +96,9 @@ func (s *Service) CreateWithDescription(ctx context.Context, ownerID int64, name
 	name = strings.TrimSpace(name)
 	if !validRepoName.MatchString(name) {
 		return Repository{}, errors.New("repository name may contain only letters, numbers, dot, underscore, and dash")
+	}
+	if names.Reserved(name) {
+		return Repository{}, errors.New("repository name is reserved")
 	}
 	if visibility == "" {
 		visibility = "private"

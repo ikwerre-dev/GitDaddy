@@ -14,6 +14,7 @@ import {
   GitCommitIcon,
   GitPullRequestIcon,
   LockKeyIcon,
+  RefreshIcon,
   Settings01Icon,
   StarIcon,
   TerminalIcon,
@@ -506,6 +507,15 @@ function SettingsView({ state, repo, clone }) {
         <p className="mt-2 text-sm text-[#57606a]">
           Synced to Cloudflare R2 for backup and distribution.
         </p>
+        <button
+          className="mt-4 inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#0969da] bg-[#0969da] px-3 text-sm font-medium text-white hover:bg-[#0757b8] disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={state.busy}
+          onClick={state.syncRepoToR2}
+          type="button"
+        >
+          <Icon icon={RefreshIcon} size={16} />
+          Sync to R2 now
+        </button>
       </Panel>
       <CollaboratorsPanel state={state} />
       <Panel className="border-[#d1242f] p-4 md:col-span-2">
@@ -606,50 +616,53 @@ function CollaboratorsPanel({ state }) {
 function RepoAbout({ state, repo, clone }) {
   const description = String(repo.description || "").trim();
   return (
-    <aside className="grid content-start gap-4">
+    <aside className="grid content-start">
       <Panel className="p-4">
-        <strong className="text-sm font-semibold">About</strong>
-        <p className="mt-3 text-sm leading-6 text-[#57606a]">
-          {description || "No description provided."}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="rounded-full bg-[#ddf4ff] px-2 py-1 text-xs font-medium text-[#0969da]">
-            git
-          </span>
-          <span className="rounded-full bg-[#ddf4ff] px-2 py-1 text-xs font-medium text-[#0969da]">
-            r2
-          </span>
+        <strong className="text-sm font-semibold">Project info</strong>
+        <div className="mt-5">
+          <strong className="text-xs font-semibold uppercase text-[#57606a]">About</strong>
+          <p className="mt-3 text-sm leading-6 text-[#57606a]">
+            {description || "No description provided."}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-full bg-[#ddf4ff] px-2 py-1 text-xs font-medium text-[#0969da]">
+              git
+            </span>
+            <span className="rounded-full bg-[#ddf4ff] px-2 py-1 text-xs font-medium text-[#0969da]">
+              r2
+            </span>
+          </div>
+          <div className="mt-4 grid gap-2 text-sm text-[#24292f]">
+            <AboutLine icon={GitCommitIcon} text={`${state.commits.length} commits`} />
+            <AboutLine icon={GitBranchIcon} text={`${state.branches.length} branches`} />
+            <AboutLine icon={UserIcon} text={`${state.collaborators.length} collaborators`} />
+            <AboutLine icon={LockKeyIcon} text={`${repo.visibility} repository`} />
+          </div>
         </div>
-        <div className="mt-4 grid gap-2 text-sm text-[#24292f]">
-          <AboutLine icon={GitCommitIcon} text={`${state.commits.length} commits`} />
-          <AboutLine icon={GitBranchIcon} text={`${state.branches.length} branches`} />
-          <AboutLine icon={UserIcon} text={`${state.collaborators.length} collaborators`} />
-          <AboutLine icon={LockKeyIcon} text={`${repo.visibility} repository`} />
-        </div>
-      </Panel>
 
-      <Panel className="p-4">
-        <div className="flex items-center justify-between">
-          <strong className="text-sm font-semibold">Clone</strong>
-          <button
-            className="inline-grid h-7 w-7 cursor-pointer place-items-center rounded-md border border-[#d0d7de] hover:bg-[#f6f8fa]"
-            onClick={() => navigator.clipboard?.writeText(`git clone ${clone}`)}
-            type="button"
-          >
-            <Icon icon={Copy01Icon} size={14} />
-          </button>
+        <div className="mt-6 border-t border-[#d0d7de] pt-5">
+          <div className="flex items-center justify-between">
+            <strong className="text-xs font-semibold uppercase text-[#57606a]">Clone</strong>
+            <button
+              className="inline-grid h-7 w-7 cursor-pointer place-items-center rounded-md border border-[#d0d7de] hover:bg-[#f6f8fa]"
+              onClick={() => navigator.clipboard?.writeText(`git clone ${clone}`)}
+              type="button"
+            >
+              <Icon icon={Copy01Icon} size={14} />
+            </button>
+          </div>
+          <code className="mt-3 block overflow-auto break-all rounded-md bg-[#f6f8fa] p-2 text-xs">
+            {clone}
+          </code>
         </div>
-        <code className="mt-3 block overflow-auto break-all rounded-md bg-[#f6f8fa] p-2 text-xs">
-          {clone}
-        </code>
-      </Panel>
 
-      <Panel className="p-4">
-        <strong className="text-sm font-semibold">Stats</strong>
-        <div className="mt-3 grid gap-2">
-          <StatLine label="Files" value={state.tree.length} />
-          <StatLine label="Pull requests" value={state.pulls.length} />
-          <StatLine label="Pending jobs" value={state.platformStats?.pending_jobs ?? 0} />
+        <div className="mt-6 border-t border-[#d0d7de] pt-5">
+          <strong className="text-xs font-semibold uppercase text-[#57606a]">Stats</strong>
+          <div className="mt-3 grid gap-2">
+            <StatLine label="Files" value={state.tree.length} />
+            <StatLine label="Pull requests" value={state.pulls.length} />
+            <StatLine label="Pending jobs" value={state.platformStats?.pending_jobs ?? 0} />
+          </div>
         </div>
       </Panel>
     </aside>

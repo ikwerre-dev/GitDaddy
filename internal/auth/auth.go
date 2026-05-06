@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gitdaddy/gitdaddy/internal/names"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -68,6 +69,9 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	username = strings.TrimSpace(strings.ToLower(username))
 	if username == "" || password == "" {
 		return User{}, errors.New("username and password are required")
+	}
+	if names.Reserved(username) {
+		return User{}, errors.New("username is reserved")
 	}
 	return s.users.CreateUser(ctx, User{
 		Username:     username,

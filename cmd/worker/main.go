@@ -28,7 +28,17 @@ func main() {
 	}
 	compression := git.ParseSnapshotCompression(env("GITDADDY_SNAPSHOT_COMPRESSION", "lz4"))
 
-	jobs := queue.NewMemoryQueue()
+	jobs := queue.Queue(queue.NewMemoryQueue())
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		redisQueue, err := queue.NewRedisQueue(redisURL, queue.DefaultRedisQueueKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+		jobs = redisQueue
+		log.Printf("gitdaddy worker using redis queue key=%s", queue.DefaultRedisQueueKey)
+	} else {
+		log.Printf("gitdaddy worker using in-memory queue; backend jobs will not arrive across processes")
+	}
 	processor := worker.NewProcessorWithCompression(jobs, git.NewService(repoRoot), objects, compression)
 
 	log.Printf("gitdaddy worker started with %s object storage and %s snapshots", objectMode, compression)

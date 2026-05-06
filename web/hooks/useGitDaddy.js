@@ -1,7 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { gitdaddyApi, tokenKey, userKey } from "../lib/api";
+
+const REFRESH_INTERVAL_MS = 5000;
+const emptyPlatformStats = {
+  repositories: 0,
+  pending_jobs: 0,
+  total_commits: 0,
+  storage: "async",
+  git_transport: "smart-http",
+};
+const emptyRepoStats = {
+  branches: 0,
+  commits: 0,
+  objects: 0,
+  size: 0,
+  head: "",
+};
 
 export function useGitDaddy() {
   const [token, setToken] = useState("");
@@ -9,9 +25,9 @@ export function useGitDaddy() {
   const [repos, setRepos] = useState([]);
   const [selected, setSelected] = useState(null);
   const [repoDetail, setRepoDetail] = useState(null);
-  const [platformStats, setPlatformStats] = useState(null);
+  const [platformStats, setPlatformStats] = useState(emptyPlatformStats);
   const [notifications, setNotifications] = useState([]);
-  const [repoStats, setRepoStats] = useState(null);
+  const [repoStats, setRepoStats] = useState(emptyRepoStats);
   const [branches, setBranches] = useState([]);
   const [commits, setCommits] = useState([]);
   const [tree, setTree] = useState([]);
@@ -25,6 +41,7 @@ export function useGitDaddy() {
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const backgroundRefresh = useRef(false);
 
   const owner = user?.username || "";
   const filteredRepos = useMemo(() => repos.filter((repo) => repo.name.toLowerCase().includes(query.toLowerCase())), [repos, query]);
@@ -37,12 +54,30 @@ export function useGitDaddy() {
   }, []);
 
   useEffect(() => {
-    if (token) loadRepos(token);
+    if (token) loadRepos(token, { silent: true });
   }, [token]);
 
   useEffect(() => {
-    if (token && user && selected) loadRepo(selected, token, ref, path);
+    if (token && user && selected) loadRepo(selected, token, ref, path, { silent: true, preservePreview: true });
   }, [selected?.id, token, user?.username]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    const refresh = async () => {
+      if (backgroundRefresh.current) return;
+      backgroundRefresh.current = true;
+      try {
+        await loadRepos(token, { silent: true });
+        if (selected) {
+          await loadRepo(selected, token, ref, path, { silent: true, preservePreview: true });
+        }
+      } finally {
+        backgroundRefresh.current = false;
+      }
+    };
+    const id = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [token, user?.username, selected?.id, selected?.name, ref, path]);
 
   async function run(action, success) {
     setBusy(true);
@@ -81,21 +116,33 @@ export function useGitDaddy() {
     setSelected(null);
   }
 
-  async function loadRepos(activeToken = token) {
-    const [repoList, stats, noteList] = await Promise.all([
-      gitdaddyApi.repos(activeToken),
-      gitdaddyApi.stats(activeToken),
-      gitdaddyApi.notifications(activeToken).catch(() => []),
-    ]);
-    const nextRepos = Array.isArray(repoList) ? repoList : [];
-    setRepos(nextRepos);
-    setPlatformStats(stats);
-    setNotifications(Array.isArray(noteList) ? noteList : []);
-    if (!selected && nextRepos.length > 0) setSelected(nextRepos[0]);
-    return nextRepos;
+  async function loadRepos(activeToken = token, options = {}) {
+    try {
+      const [repoList, stats, noteList] = await Promise.all([
+        gitdaddyApi.repos(activeToken),
+        gitdaddyApi.stats(activeToken).catch(() => emptyPlatformStats),
+        gitdaddyApi.notifications(activeToken).catch(() => []),
+      ]);
+      const nextRepos = Array.isArray(repoList) ? repoList : [];
+      setRepos(nextRepos);
+      setPlatformStats({ ...emptyPlatformStats, ...(stats || {}) });
+      setNotifications(Array.isArray(noteList) ? noteList : []);
+      if (!selected && nextRepos.length > 0) {
+        setSelected(nextRepos[0]);
+      } else if (selected && nextRepos.length > 0 && !nextRepos.some((repo) => repo.id === selected.id)) {
+        setSelected(nextRepos[0]);
+      } else if (selected && nextRepos.length === 0) {
+        setSelected(null);
+        setRepoDetail(null);
+      }
+      return nextRepos;
+    } catch (error) {
+      if (!options.silent) setMessage(error.message);
+      return repos;
+    }
   }
 
-  async function loadRepo(repo = selected, activeToken = token, nextRef = ref, nextPath = path) {
+  async function loadRepo(repo = selected, activeToken = token, nextRef = ref, nextPath = path, options = {}) {
     if (!repo || !owner) return;
     try {
       const [detail, branchData, commitData, treeData, stats, pullData, collaboratorData] = await Promise.all([
@@ -113,25 +160,29 @@ export function useGitDaddy() {
       const nextPulls = Array.isArray(pullData) ? pullData : [];
       const nextCollaborators = Array.isArray(collaboratorData) ? collaboratorData : [];
       const defaultRef = nextBranches.find((branch) => branch.current)?.name || nextBranches[0]?.name || "HEAD";
-      setRepoDetail(detail.repository);
+      setRepoDetail(detail?.repository || repo);
       setBranches(nextBranches);
       setCommits(nextCommits);
       setTree(nextTree);
-      setRepoStats(stats);
+      setRepoStats({ ...emptyRepoStats, ...(stats || {}) });
       setPulls(nextPulls);
       setCollaborators(nextCollaborators);
       setRef(nextRef && nextRef !== "HEAD" ? nextRef : defaultRef);
       setPath(nextPath || "");
-      setFilePreview(null);
-      setDiffPreview(null);
-    } catch {
+      if (!options.preservePreview) {
+        setFilePreview(null);
+        setDiffPreview(null);
+      }
+    } catch (error) {
+      if (options.silent) return;
+      setMessage(error.message);
       setRepoDetail(repo);
       setBranches([]);
       setCommits([]);
       setTree([]);
       setPulls([]);
       setCollaborators([]);
-      setRepoStats(null);
+      setRepoStats(emptyRepoStats);
     }
   }
 
@@ -235,6 +286,14 @@ export function useGitDaddy() {
     }, (updated) => `Repository is now ${updated.visibility}`);
   }
 
+  async function syncRepoToR2() {
+    return run(async () => {
+      const result = await gitdaddyApi.syncRepo(token, owner, selected.name);
+      await loadRepos(token);
+      return result;
+    }, (result) => `R2 sync queued: ${result.key}`);
+  }
+
   async function deleteRepo() {
     if (!selected || !window.confirm(`Delete ${selected.name}? This removes repository metadata and local Git storage.`)) return;
     await run(async () => {
@@ -287,6 +346,7 @@ export function useGitDaddy() {
     setDiffPreview,
     setFilePreview,
     setQuery,
+    syncRepoToR2,
     upPath,
     updateVisibility,
   };

@@ -46,7 +46,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	jobs := queue.NewMemoryQueue()
+	jobs := queue.Queue(queue.NewMemoryQueue())
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		redisQueue, err := queue.NewRedisQueue(redisURL, queue.DefaultRedisQueueKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+		jobs = redisQueue
+		log.Printf("gitdaddy backend using redis queue key=%s", queue.DefaultRedisQueueKey)
+	} else {
+		log.Printf("gitdaddy backend using in-memory queue; worker-service will not receive jobs across processes")
+	}
 
 	handler := api.NewServer(authn, repos, gitSvc, objects, jobs)
 	log.Printf("gitdaddy backend listening on %s with %s object storage", addr, objectMode)

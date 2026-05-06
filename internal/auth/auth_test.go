@@ -49,3 +49,12 @@ func TestRegisterLoginAndCurrentUser(t *testing.T) {
 		t.Fatalf("expected git auth user %d, got %d", created.ID, gitUser.ID)
 	}
 }
+
+func TestRegisterRejectsReservedUsernames(t *testing.T) {
+	service := NewService(NewMemoryUserStore(), NewMemorySessionStore())
+	for _, username := range []string{"dashboard", "settings", "stars", "auth"} {
+		if _, err := service.Register(context.Background(), username, "", "secret"); err == nil {
+			t.Fatalf("expected reserved username %q to be rejected", username)
+		}
+	}
+}

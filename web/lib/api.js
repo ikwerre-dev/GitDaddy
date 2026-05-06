@@ -42,6 +42,7 @@ export const gitdaddyApi = {
     request(`/api/repos/${owner}/${repo}/file`, { method: "PUT", token, body }),
   diff: (token, owner, repo, commit) => request(`/api/repos/${owner}/${repo}/diff?commit=${encodeURIComponent(commit)}`, { token }),
   repoStats: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/stats`, { token }),
+  syncRepo: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/sync`, { method: "POST", token }),
   pulls: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/pulls`, { token }),
   createPull: (token, owner, repo, body) => request(`/api/repos/${owner}/${repo}/pulls`, { method: "POST", token, body }),
   collaborators: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/collaborators`, { token }),

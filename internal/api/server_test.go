@@ -137,6 +137,27 @@ func TestGitBaseURLDoesNotRenderWebUI(t *testing.T) {
 	}
 }
 
+func TestRepoSyncEndpointQueuesR2Job(t *testing.T) {
+	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
+	repoSvc := repo.NewService(repo.NewMemoryStore())
+	jobs := queue.NewMemoryQueue()
+	server := NewServer(authSvc, repoSvc, git.NewService(t.TempDir()), storage.NewLocalObjectStore(t.TempDir()), jobs)
+	ts := httptest.NewServer(server.Routes())
+	defer ts.Close()
+
+	post(t, ts.URL+"/api/register", "", map[string]string{"username": "alice", "email": "a@example.com", "password": "secret"}, http.StatusCreated)
+	login := post(t, ts.URL+"/api/login", "", map[string]string{"username": "alice", "password": "secret"}, http.StatusOK)
+	token := login["token"].(string)
+	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
+	sync := post(t, ts.URL+"/api/repos/alice/demo/sync", token, map[string]string{}, http.StatusAccepted)
+	if sync["key"] != "repos/alice/demo.tar.lz4" {
+		t.Fatalf("unexpected sync key: %+v", sync)
+	}
+	if jobs.Len() != 1 {
+		t.Fatalf("expected one queued sync job, got %d", jobs.Len())
+	}
+}
+
 func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
 	repoSvc := repo.NewService(repo.NewMemoryStore())

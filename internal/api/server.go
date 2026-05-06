@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -65,6 +67,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/repos/{owner}/{repo}/file", s.commitFile)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/diff", s.repoDiff)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/stats", s.repoStats)
+	mux.HandleFunc("POST /api/repos/{owner}/{repo}/sync", s.syncRepo)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/collaborators", s.listCollaborators)
 	mux.HandleFunc("PUT /api/repos/{owner}/{repo}/collaborators/{username}", s.grantCollaborator)
 	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}/collaborators/{username}", s.revokeCollaborator)
@@ -531,6 +534,22 @@ func (s *Server) repoStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) syncRepo(w http.ResponseWriter, r *http.Request) {
+	owner, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
+		return
+	}
+	if err := s.enqueueRepoSync(r.Context(), owner.Username, repository.Name); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "R2 sync queued", fmt.Sprintf("%s will be uploaded to object storage", repository.Name))
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"status": "queued",
+		"key":    fmt.Sprintf("repos/%s/%s%s", owner.Username, repository.Name, git.ParseSnapshotCompression(getenv("GITDADDY_SNAPSHOT_COMPRESSION", "lz4")).Extension()),
+	})
+}
+
 func (s *Server) listCollaborators(w http.ResponseWriter, r *http.Request) {
 	_, repository, ok := s.resolveRepo(w, r)
 	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
@@ -649,8 +668,28 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || recorder.status >= 400 || !receivePack {
 		return
 	}
-	_ = s.queue.Enqueue(r.Context(), queue.Job{Type: "repo.sync", Attrs: map[string]string{"owner": owner.Username, "repo": repository.Name}})
+	if err := s.enqueueRepoSync(r.Context(), owner.Username, repository.Name); err != nil {
+		s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "R2 sync failed to queue", err.Error())
+		return
+	}
 	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "Git push received", fmt.Sprintf("New Git updates pushed to %s", repository.Name))
+}
+
+func (s *Server) enqueueRepoSync(ctx context.Context, owner, name string) error {
+	key := fmt.Sprintf("repos/%s/%s%s", owner, name, git.ParseSnapshotCompression(getenv("GITDADDY_SNAPSHOT_COMPRESSION", "lz4")).Extension())
+	if err := s.queue.Enqueue(ctx, queue.Job{Type: "repo.sync", Attrs: map[string]string{"owner": owner, "repo": name}}); err != nil {
+		log.Printf("r2 sync queue failed owner=%s repo=%s key=%s error=%v", owner, name, key, err)
+		return err
+	}
+	log.Printf("r2 sync queued owner=%s repo=%s key=%s pending_jobs=%d", owner, name, key, queueLen(s.queue))
+	return nil
+}
+
+func queueLen(q queue.Queue) int {
+	if sized, ok := q.(interface{ Len() int }); ok {
+		return sized.Len()
+	}
+	return -1
 }
 
 func (s *Server) resolveRepo(w http.ResponseWriter, r *http.Request) (auth.User, repo.Repository, bool) {
@@ -989,4 +1028,11 @@ func (n *notificationStore) list(userID int64, limit int) []notification {
 		}
 	}
 	return out
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
