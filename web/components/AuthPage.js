@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitBranchIcon, ShieldKeyIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "./Icon";
-import { Button, Input, Message } from "./ui";
+import { Input, Message } from "./ui";
 
 export function AuthPage({ state }) {
   const router = useRouter();
@@ -54,10 +54,6 @@ export function AuthPage({ state }) {
                 <h2 className="mt-2 text-4xl font-black">{mode === "login" ? "Login to GitDaddy" : "Start with GitDaddy"}</h2>
               </div>
 
-              <Input name="username" placeholder="Username" required />
-              {mode === "register" ? <Input name="email" placeholder="Email" /> : null}
-              <Input name="password" placeholder="Password" type="password" required />
-
               <div className="grid grid-cols-2 rounded-md border border-neutral-200 bg-neutral-50 p-1">
                 <button type="button" className={mode === "login" ? "min-h-10 cursor-pointer rounded bg-neutral-950 font-black text-white" : "min-h-10 cursor-pointer font-black text-neutral-600"} onClick={() => setMode("login")}>
                   Login
@@ -67,10 +63,18 @@ export function AuthPage({ state }) {
                 </button>
               </div>
 
-              <Button className="border-neutral-950 bg-[#1f2328] text-white hover:bg-neutral-800" disabled={state.busy} type="submit">
+              <Input name="username" placeholder="Username" required />
+              {mode === "register" ? <Input name="email" placeholder="Email" /> : null}
+              <Input name="password" placeholder="Password" type="password" required />
+
+              <button
+                className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-950 bg-[#1f2328] px-4 text-sm font-black text-white shadow-[2px_2px_0_#1f2328] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={state.busy}
+                type="submit"
+              >
                 <Icon icon={ShieldKeyIcon} size={18} />
-                {mode === "login" ? "Login" : "Create account"}
-              </Button>
+                <span>{mode === "login" ? "Login" : "Create account"}</span>
+              </button>
               <Message>{state.message}</Message>
             </form>
           </section>

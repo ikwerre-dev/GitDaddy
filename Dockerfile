@@ -1,7 +1,8 @@
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 RUN go build -o /out/gitdaddy-backend ./cmd/backend && go build -o /out/gitdaddy-worker ./cmd/worker
