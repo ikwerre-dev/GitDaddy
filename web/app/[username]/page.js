@@ -1,25 +1,19 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { UserProfile } from "../../components/UserProfile";
 import { useGitDaddy } from "../../hooks/useGitDaddy";
 
 export default function UserProfilePage() {
   const params = useParams();
-  const router = useRouter();
   const state = useGitDaddy();
-  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
-
-  useEffect(() => {
-    if (!hasCheckedAuth && !state.token && !state.user) {
-      setHasCheckedAuth(true);
-      router.push("/auth");
-    }
-  }, [state.token, state.user, router, hasCheckedAuth]);
 
   if (!state.token || !state.user) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f6f8fa]">
+        <p className="text-[#57606a]">Loading...</p>
+      </div>
+    );
   }
 
   return <UserProfile state={state} username={params.username} />;

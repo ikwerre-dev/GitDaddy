@@ -1,23 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { GitBranchIcon, ShieldKeyIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "./Icon";
 import { Input, Message } from "./ui";
 
 export function AuthPage({ state }) {
-  const router = useRouter();
   const [mode, setMode] = useState("login");
-  const [hasRedirected, setHasRedirected] = useState(false);
-
-  useEffect(() => {
-    // Only redirect once when both token and user are available
-    if (state.token && state.user && !hasRedirected) {
-      setHasRedirected(true);
-      router.push("/dashboard");
-    }
-  }, [router, state.token, state.user, hasRedirected]);
 
   return (
     <main className="min-h-screen bg-[#f6f8fa]">

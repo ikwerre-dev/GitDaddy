@@ -16,6 +16,9 @@ import { Sidebar } from "./Sidebar";
 import Link from "next/link";
 
 export function UserProfile({ state, username }) {
+  // Check if user exists
+  const userExists = state.owner === username || state.repos.some(r => r.owner === username);
+  
   // Filter repos based on ownership and collaboration
   const ownedRepos = state.repos.filter((repo) => state.owner === username);
   const isOwnProfile = state.user?.username === username;
@@ -23,6 +26,37 @@ export function UserProfile({ state, username }) {
   // For now, we'll show all repos if it's the user's own profile
   // In a real app, you'd fetch collaborator repos from the API
   const visibleRepos = isOwnProfile ? ownedRepos : ownedRepos.filter((r) => r.visibility === "public");
+
+  // If user doesn't exist and it's not the current user
+  if (!userExists && !isOwnProfile) {
+    return (
+      <main className="min-h-screen bg-[#f6f8fa]">
+        <TopNav user={state.user} onLogout={state.logout} />
+        <div className="flex min-h-[calc(100vh-64px)]">
+          <Sidebar state={state} />
+          <section className="flex-1 px-4 py-6 lg:px-8">
+            <div className="mx-auto max-w-[1280px]">
+              <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
+                <div className="grid h-32 w-32 place-items-center rounded-full bg-[#d0d7de] text-6xl font-bold text-white">
+                  ?
+                </div>
+                <h1 className="mt-6 text-3xl font-bold">User not found</h1>
+                <p className="mt-3 text-lg text-[#57606a]">
+                  The user <strong>@{username}</strong> doesn't exist or you don't have access to view their profile.
+                </p>
+                <a
+                  href="/dashboard"
+                  className="mt-6 inline-flex h-10 items-center justify-center rounded-md border border-[#0969da] bg-[#0969da] px-4 text-sm font-medium text-white hover:bg-[#0860ca]"
+                >
+                  Go to Dashboard
+                </a>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f6f8fa]">

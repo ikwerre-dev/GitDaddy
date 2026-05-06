@@ -84,7 +84,13 @@ function HomeDashboard({ state }) {
 
 function CreateCard({ state }) {
   return (
-    <Panel className="p-4">
+    <Panel className="p-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold">Create a new repository</h3>
+        <p className="mt-1 text-sm text-[#57606a]">
+          A repository contains all project files, including revision history.
+        </p>
+      </div>
       <form
         className="grid gap-4"
         onSubmit={(event) => {
@@ -93,34 +99,36 @@ function CreateCard({ state }) {
           event.currentTarget.reset();
         }}
       >
-        <div className="flex items-start gap-4">
-          <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-full bg-[#0969da] text-white">
-            <Icon icon={BookOpen01Icon} size={22} />
-          </div>
-          <div className="flex-1">
-            <strong className="text-sm font-semibold">Create a new repository</strong>
-            <p className="mt-1 text-sm text-[#57606a]">
-              Start a repo, push with Git, and browse it here.
-            </p>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">
+            Repository name <span className="text-red-600">*</span>
+          </label>
           <Input
-            className="h-9"
+            className="h-10"
             name="name"
-            placeholder="repository-name"
+            placeholder="my-awesome-project"
             required
           />
-          <Select name="visibility" defaultValue="private" className="h-9">
-            <option value="private">Private</option>
-            <option value="public">Public</option>
+          <p className="text-xs text-[#57606a]">
+            Great repository names are short and memorable.
+          </p>
+        </div>
+        
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Visibility</label>
+          <Select name="visibility" defaultValue="private" className="h-10">
+            <option value="private">Private - Only you can see this repository</option>
+            <option value="public">Public - Anyone can see this repository</option>
           </Select>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-[#d0d7de] pt-4">
           <button
-            className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-[#1f883d] bg-[#1f883d] px-4 text-sm font-medium text-white hover:bg-[#1a7f37] disabled:opacity-60"
+            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-[#1f883d] bg-[#1f883d] px-4 text-sm font-medium text-white hover:bg-[#1a7f37] disabled:opacity-60"
             disabled={state.busy}
             type="submit"
           >
-            Create
+            Create repository
           </button>
         </div>
       </form>
@@ -161,20 +169,6 @@ function RightRail({ state }) {
         </div>
       </Panel>
       <Panel className="p-4">
-        <strong className="text-sm font-semibold">Latest updates</strong>
-        <div className="mt-3 grid gap-3 border-l-2 border-[#d0d7de] pl-3">
-          <Timeline
-            title="PostgreSQL storage"
-            body="Persistent data across restarts."
-          />
-          <Timeline
-            title="Smart HTTP Git"
-            body="Standard Git protocol support."
-          />
-          <Timeline title="R2 backup" body="Cloudflare R2 sync for backups." />
-        </div>
-      </Panel>
-      <Panel className="p-4">
         <strong className="text-sm font-semibold">Quick stats</strong>
         <div className="mt-3 grid gap-2">
           <StatLine
@@ -203,6 +197,7 @@ function RightRail({ state }) {
   );
 }
 
+ 
 function Timeline({ title, body }) {
   return (
     <div className="relative">

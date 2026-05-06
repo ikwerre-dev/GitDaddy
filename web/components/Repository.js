@@ -33,17 +33,17 @@ export function Repository({ state, repo, username }) {
       <TopNav user={state.user} onLogout={state.logout} />
       <div className="flex min-h-[calc(100vh-64px)]">
         <Sidebar state={state} />
-        <section className="flex-1 px-4 py-6 lg:px-8">
+        <section className="min-w-0 flex-1 px-4 py-6 lg:px-8">
           <Message>{state.message}</Message>
           <div className="mx-auto max-w-[1280px]">
-            <RepoHeader state={state} repo={repo} clone={clone} />
+            <RepoHeader state={state} repo={repo} clone={clone} owner={owner} />
             <RepoTabs
               active={state.activeTab}
               onChange={state.setActiveTab}
               commits={state.repoStats?.commits ?? state.commits.length}
               pulls={state.pulls.length}
             />
-            <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_320px]">
+            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
               <section className="min-w-0">
                 {state.activeTab === "code" ? <CodeView state={state} clone={clone} /> : null}
                 {state.activeTab === "commits" ? <CommitView state={state} /> : null}
@@ -62,7 +62,7 @@ export function Repository({ state, repo, username }) {
   );
 }
 
-function RepoHeader({ state, repo, clone }) {
+function RepoHeader({ state, repo, clone, owner }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 pb-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -448,7 +448,7 @@ function SettingsView({ state, repo, clone }) {
       <Panel className="p-4">
         <Icon icon={TerminalIcon} size={20} />
         <strong className="mt-3 block text-sm font-semibold">Git remote URL</strong>
-        <code className="mt-2 block overflow-auto rounded-md bg-[#f6f8fa] p-3 text-xs">
+        <code className="mt-2 block overflow-auto break-all rounded-md bg-[#f6f8fa] p-3 text-xs">
           {clone}
         </code>
       </Panel>
@@ -472,7 +472,7 @@ function SettingsView({ state, repo, clone }) {
         </p>
       </Panel>
       <CollaboratorsPanel state={state} />
-      <Panel className="border-[#d1242f] p-4">
+      <Panel className="border-[#d1242f] p-4 md:col-span-2">
         <Icon icon={Cancel01Icon} size={20} className="text-[#d1242f]" />
         <strong className="mt-3 block text-sm font-semibold">Danger zone</strong>
         <button
@@ -602,7 +602,7 @@ function RepoAbout({ state, repo, clone }) {
             <Icon icon={Copy01Icon} size={14} />
           </button>
         </div>
-        <code className="mt-3 block overflow-auto rounded-md bg-[#f6f8fa] p-2 text-xs">
+        <code className="mt-3 block overflow-auto break-all rounded-md bg-[#f6f8fa] p-2 text-xs">
           {clone}
         </code>
       </Panel>

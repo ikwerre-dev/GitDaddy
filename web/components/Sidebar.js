@@ -6,9 +6,11 @@ import {
   BookOpen01Icon,
   CodeFolderIcon,
   GitPullRequestIcon,
+  Home01Icon,
   Search01Icon,
   Settings01Icon,
   StarIcon,
+  UserIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "./Icon";
 import Link from "next/link";
@@ -17,6 +19,7 @@ import { usePathname } from "next/navigation";
 export function Sidebar({ state }) {
   const pathname = usePathname();
   const isDashboard = pathname === "/dashboard";
+  const isUserProfile = pathname.startsWith("/") && pathname.split("/").length === 2 && pathname !== "/dashboard";
 
   return (
     <aside className="hidden w-64 border-r border-[#d0d7de] bg-white lg:block">
@@ -25,18 +28,15 @@ export function Sidebar({ state }) {
           <SideLink
             href="/dashboard"
             active={isDashboard}
-            icon={BookOpen01Icon}
+            icon={Home01Icon}
             label="Home"
           />
           <SideLink
-            href="/dashboard?tab=pulls"
-            icon={GitPullRequestIcon}
-            label="Pull requests"
-            count={state.pulls.length}
-          />
-          <SideLink href="/dashboard?tab=activity" icon={Activity01Icon} label="Activity" />
-          <SideLink href="/dashboard?tab=stars" icon={StarIcon} label="Stars" />
-          <SideLink href="/dashboard?tab=settings" icon={Settings01Icon} label="Settings" />
+            href={`/${state.owner}`}
+            active={isUserProfile}
+            icon={UserIcon}
+            label="Your profile"
+          /> 
         </nav>
 
         <div className="my-4 border-t border-[#d0d7de]" />
