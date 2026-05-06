@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,10 +25,11 @@ type Server struct {
 	objects storage.ObjectStore
 	queue   queue.Queue
 	metrics metrics
+	limits  *rateLimiter
 }
 
 func NewServer(auth *auth.Service, repos *repo.Service, git *git.Service, objects storage.ObjectStore, queue queue.Queue) *Server {
-	return &Server{auth: auth, repos: repos, git: git, objects: objects, queue: queue}
+	return &Server{auth: auth, repos: repos, git: git, objects: objects, queue: queue, limits: newRateLimiter()}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -58,10 +61,13 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}/collaborators/{username}", s.revokeCollaborator)
 	mux.HandleFunc("GET /metrics", s.metricsHandler)
 	mux.HandleFunc("/git/", s.gitHTTP)
-	return s.observe(cors(mux))
+	return s.observe(securityHeaders(cors(mux)))
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	if !s.allowAuthAttempt(w, r, "register", 10, time.Minute) {
+		return
+	}
 	var req struct{ Username, Email, Password string }
 	if !decode(w, r, &req) {
 		return
@@ -75,6 +81,9 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if !s.allowAuthAttempt(w, r, "login", 12, time.Minute) {
+		return
+	}
 	var req struct{ Username, Password string }
 	if !decode(w, r, &req) {
 		return
@@ -476,6 +485,9 @@ func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (auth.User,
 }
 
 func (s *Server) basicUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
+	if !s.allowAuthAttempt(w, r, "git-basic", 30, time.Minute) {
+		return auth.User{}, false
+	}
 	username, password, ok := r.BasicAuth()
 	if !ok {
 		w.Header().Set("WWW-Authenticate", `Basic realm="GitDaddy Git"`)
@@ -523,8 +535,19 @@ func bearerToken(w http.ResponseWriter, r *http.Request) (string, bool) {
 }
 
 func gitPathParts(path string) (string, string, bool) {
+	if strings.Contains(path, "\\") || strings.Contains(path, "\x00") {
+		return "", "", false
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." {
+			return "", "", false
+		}
+	}
 	parts := strings.Split(strings.TrimPrefix(path, "/git/"), "/")
 	if len(parts) < 2 {
+		return "", "", false
+	}
+	if !strings.HasSuffix(parts[1], ".git") {
 		return "", "", false
 	}
 	repoName := strings.TrimSuffix(parts[1], ".git")
@@ -543,7 +566,10 @@ type errString string
 func (e errString) Error() string { return string(e) }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(v); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return false
 	}
@@ -592,7 +618,11 @@ func writeError(w http.ResponseWriter, status int, err error) {
 
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" && allowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
@@ -601,4 +631,82 @@ func cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		if r.TLS != nil {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func allowedOrigin(origin string) bool {
+	configured := strings.TrimSpace(os.Getenv("GITDADDY_ALLOWED_ORIGINS"))
+	if configured == "" {
+		configured = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002"
+	}
+	for _, allowed := range strings.Split(configured, ",") {
+		if strings.TrimSpace(allowed) == origin {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) allowAuthAttempt(w http.ResponseWriter, r *http.Request, scope string, limit int, window time.Duration) bool {
+	key := scope + ":" + clientIP(r)
+	if s.limits.allow(key, limit, window) {
+		return true
+	}
+	writeError(w, http.StatusTooManyRequests, errString("too many attempts"))
+	return false
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
+		return forwarded
+	}
+	host := r.RemoteAddr
+	if idx := strings.LastIndex(host, ":"); idx > -1 {
+		return host[:idx]
+	}
+	return host
+}
+
+type rateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string]rateState
+}
+
+type rateState struct {
+	windowStart time.Time
+	count       int
+}
+
+func newRateLimiter() *rateLimiter {
+	return &rateLimiter{attempts: map[string]rateState{}}
+}
+
+func (l *rateLimiter) allow(key string, limit int, window time.Duration) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	state := l.attempts[key]
+	if state.windowStart.IsZero() || now.Sub(state.windowStart) > window {
+		l.attempts[key] = rateState{windowStart: now, count: 1}
+		return true
+	}
+	if state.count >= limit {
+		return false
+	}
+	state.count++
+	l.attempts[key] = state
+	return true
 }

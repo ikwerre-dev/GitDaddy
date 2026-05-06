@@ -33,6 +33,7 @@ func TestAPIRegisterLoginRepoAndPushFlow(t *testing.T) {
 	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "", "", http.StatusUnauthorized)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-upload-pack", "alice", "secret", http.StatusOK)
+	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/../secret.git/info/refs?service=git-upload-pack", "alice", "secret", http.StatusNotFound)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-receive-pack", "", "", http.StatusUnauthorized)
 	raw(t, http.MethodGet, ts.URL+"/git/alice/demo.git/info/refs?service=git-receive-pack", "alice", "secret", http.StatusOK)
 	patch(t, ts.URL+"/api/repos/alice/demo", token, map[string]string{"visibility": "public"}, http.StatusOK)
@@ -50,6 +51,36 @@ func TestAPIRegisterLoginRepoAndPushFlow(t *testing.T) {
 	get(t, ts.URL+"/api/whoami", token, http.StatusUnauthorized)
 }
 
+func TestSecurityHeadersAndCors(t *testing.T) {
+	t.Setenv("GITDADDY_ALLOWED_ORIGINS", "http://frontend.test")
+	server := NewServer(
+		auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore()),
+		repo.NewService(repo.NewMemoryStore()),
+		git.NewService(t.TempDir()),
+		storage.NewLocalObjectStore(t.TempDir()),
+		queue.NewMemoryQueue(),
+	)
+	ts := httptest.NewServer(server.Routes())
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/api/login", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "http://frontend.test")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if got := res.Header.Get("Access-Control-Allow-Origin"); got != "http://frontend.test" {
+		t.Fatalf("unexpected cors origin %q", got)
+	}
+	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("missing security header, got %q", got)
+	}
+}
+
 func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
 	repoSvc := repo.NewService(repo.NewMemoryStore())
@@ -62,6 +93,8 @@ func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	login := post(t, ts.URL+"/api/login", "", map[string]string{"username": "alice", "password": "secret"}, http.StatusOK)
 	token := login["token"].(string)
 	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
+	pat := post(t, ts.URL+"/api/tokens", token, map[string]any{"name": "integration", "expires_in_days": 1}, http.StatusCreated)
+	secret := pat["secret"].(string)
 
 	work := t.TempDir()
 	source := filepath.Join(work, "source")
@@ -77,7 +110,7 @@ func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	}
 	run(t, source, "git", "add", "README.md")
 	run(t, source, "git", "commit", "-m", "initial commit")
-	remote := strings.Replace(ts.URL, "http://", "http://alice:secret@", 1) + "/git/alice/demo.git"
+	remote := strings.Replace(ts.URL, "http://", "http://alice:"+secret+"@", 1) + "/git/alice/demo.git"
 	run(t, source, "git", "remote", "add", "origin", remote)
 	run(t, source, "git", "push", "origin", "main")
 

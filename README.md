@@ -61,6 +61,16 @@ go test ./...
 cd web && npm run build
 ```
 
+Common shortcuts:
+
+```bash
+make test
+make build
+make web-build
+make full-test
+make dev
+```
+
 ## Full Test Script
 
 ```bash

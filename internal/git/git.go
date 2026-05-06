@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pierrec/lz4/v4"
 )
@@ -117,7 +118,9 @@ func (s *Service) InitBare(ctx context.Context, owner, name string) error {
 }
 
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cmd := exec.CommandContext(r.Context(), "git", "http-backend")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "http-backend")
 	cmd.Env = append(os.Environ(),
 		"GIT_PROJECT_ROOT="+s.root,
 		"GIT_HTTP_EXPORT_ALL=1",
