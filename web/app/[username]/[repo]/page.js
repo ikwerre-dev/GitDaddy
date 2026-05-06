@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Repository } from "../../../components/Repository";
 import { useGitDaddy } from "../../../hooks/useGitDaddy";
 
@@ -9,21 +9,23 @@ export default function RepoPage() {
   const params = useParams();
   const router = useRouter();
   const state = useGitDaddy();
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
 
   useEffect(() => {
-    if (!state.token || !state.user) {
-      router.replace("/auth");
+    if (!hasCheckedAuth && !state.token && !state.user) {
+      setHasCheckedAuth(true);
+      router.push("/auth");
       return;
     }
 
     // Find and select the repo based on URL params
-    if (params.username && params.repo && state.repos.length > 0) {
+    if (state.token && state.user && params.username && params.repo && state.repos.length > 0) {
       const repo = state.repos.find((r) => r.name === params.repo);
       if (repo && state.selected?.name !== repo.name) {
         state.chooseRepo(repo);
       }
     }
-  }, [params.username, params.repo, state.token, state.user, state.repos, router]);
+  }, [params.username, params.repo, state.token, state.user, state.repos, router, hasCheckedAuth]);
 
   if (!state.token || !state.user) {
     return null;
