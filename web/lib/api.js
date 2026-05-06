@@ -45,6 +45,8 @@ export const gitdaddyApi = {
   syncRepo: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/sync`, { method: "POST", token }),
   pulls: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/pulls`, { token }),
   createPull: (token, owner, repo, body) => request(`/api/repos/${owner}/${repo}/pulls`, { method: "POST", token, body }),
+  reviewPull: (token, owner, repo, id) => request(`/api/repos/${owner}/${repo}/pulls/${id}/review`, { token }),
+  mergePull: (token, owner, repo, id) => request(`/api/repos/${owner}/${repo}/pulls/${id}/merge`, { method: "POST", token }),
   collaborators: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/collaborators`, { token }),
   addCollaborator: (token, owner, repo, username, body) =>
     request(`/api/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`, { method: "PUT", token, body }),

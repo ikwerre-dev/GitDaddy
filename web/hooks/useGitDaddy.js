@@ -256,6 +256,22 @@ export function useGitDaddy() {
     }, (pull) => `Opened pull request #${pull.id}`);
   }
 
+  async function reviewPullRequest(pullID) {
+    return run(async () => {
+      const reviewed = await gitdaddyApi.reviewPull(token, owner, selected.name, pullID);
+      setPulls((current) => current.map((pull) => (pull.id === pullID ? reviewed : pull)));
+      return reviewed;
+    }, (pull) => `Checked pull request #${pull.id}`);
+  }
+
+  async function mergePullRequest(pullID) {
+    return run(async () => {
+      const result = await gitdaddyApi.mergePull(token, owner, selected.name, pullID);
+      await loadRepo(selected, token, ref, path, { preservePreview: true });
+      return result;
+    }, (result) => `Merged pull request #${result.pull?.id}`);
+  }
+
   async function addCollaborator(formData) {
     return run(async () => {
       const username = String(formData.username || "").trim();
@@ -341,7 +357,9 @@ export function useGitDaddy() {
     logout,
     openDiff,
     openEntry,
+    mergePullRequest,
     removeCollaborator,
+    reviewPullRequest,
     setActiveTab,
     setDiffPreview,
     setFilePreview,

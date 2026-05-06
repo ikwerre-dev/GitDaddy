@@ -54,6 +54,14 @@ type RepositoryStats struct {
 	Head     string `json:"head"`
 }
 
+type MergeCheck struct {
+	Mergeable bool   `json:"mergeable"`
+	Conflict  bool   `json:"conflict"`
+	Merged    bool   `json:"merged"`
+	Message   string `json:"message"`
+	Tree      string `json:"tree,omitempty"`
+}
+
 type SnapshotCompression string
 
 const (
@@ -381,6 +389,92 @@ func (s *Service) CreateBranch(ctx context.Context, owner, name, branch, from st
 	return Branch{Name: branch}, nil
 }
 
+func (s *Service) CheckMerge(ctx context.Context, owner, name, source, target string) (MergeCheck, error) {
+	path, err := s.repoPath(owner, name)
+	if err != nil {
+		return MergeCheck{}, err
+	}
+	sourceRef, targetRef, err := mergeRefs(source, target)
+	if err != nil {
+		return MergeCheck{}, err
+	}
+	if err := verifyBranch(ctx, path, sourceRef); err != nil {
+		return MergeCheck{}, fmt.Errorf("source branch not found")
+	}
+	if err := verifyBranch(ctx, path, targetRef); err != nil {
+		return MergeCheck{}, fmt.Errorf("target branch not found")
+	}
+	if err := exec.CommandContext(ctx, "git", "--git-dir", path, "merge-base", "--is-ancestor", sourceRef, targetRef).Run(); err == nil {
+		return MergeCheck{Mergeable: false, Merged: true, Message: "Source branch is already merged."}, nil
+	}
+	out, err := exec.CommandContext(ctx, "git", "--git-dir", path, "merge-tree", "--write-tree", targetRef, sourceRef).CombinedOutput()
+	if err != nil {
+		return MergeCheck{Mergeable: false, Conflict: true, Message: strings.TrimSpace(string(out))}, nil
+	}
+	tree := strings.TrimSpace(string(out))
+	return MergeCheck{Mergeable: true, Message: "This pull request can be merged cleanly.", Tree: tree}, nil
+}
+
+func (s *Service) MergeBranches(ctx context.Context, owner, name, source, target, message, authorName, authorEmail string) (Commit, error) {
+	path, err := s.repoPath(owner, name)
+	if err != nil {
+		return Commit{}, err
+	}
+	sourceRef, targetRef, err := mergeRefs(source, target)
+	if err != nil {
+		return Commit{}, err
+	}
+	check, err := s.CheckMerge(ctx, owner, name, source, target)
+	if err != nil {
+		return Commit{}, err
+	}
+	if check.Merged {
+		return Commit{}, errors.New("source branch is already merged")
+	}
+	if !check.Mergeable {
+		if check.Message == "" {
+			check.Message = "merge has conflicts"
+		}
+		return Commit{}, errors.New(check.Message)
+	}
+	if strings.TrimSpace(message) == "" {
+		message = fmt.Sprintf("Merge branch '%s' into %s", source, target)
+	}
+	if strings.TrimSpace(authorName) == "" {
+		authorName = owner
+	}
+	if strings.TrimSpace(authorEmail) == "" {
+		authorEmail = owner + "@gitdaddy.local"
+	}
+	targetHash, err := gitCmdOutput(ctx, path, nil, nil, "rev-parse", targetRef)
+	if err != nil {
+		return Commit{}, err
+	}
+	sourceHash, err := gitCmdOutput(ctx, path, nil, nil, "rev-parse", sourceRef)
+	if err != nil {
+		return Commit{}, err
+	}
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME="+authorName,
+		"GIT_AUTHOR_EMAIL="+authorEmail,
+		"GIT_COMMITTER_NAME="+authorName,
+		"GIT_COMMITTER_EMAIL="+authorEmail,
+	)
+	commitHash, err := gitCmdOutput(ctx, path, env, nil, "commit-tree", check.Tree, "-p", strings.TrimSpace(targetHash), "-p", strings.TrimSpace(sourceHash), "-m", message)
+	if err != nil {
+		return Commit{}, err
+	}
+	commitHash = strings.TrimSpace(commitHash)
+	if err := gitCmd(ctx, path, nil, nil, "update-ref", targetRef, commitHash); err != nil {
+		return Commit{}, err
+	}
+	commits, err := s.Commits(ctx, owner, name, commitHash, 1)
+	if err != nil || len(commits) == 0 {
+		return Commit{Hash: commitHash, Author: authorName, Email: authorEmail, Subject: message}, nil
+	}
+	return commits[0], nil
+}
+
 func (s *Service) Commits(ctx context.Context, owner, name, ref string, limit int) ([]Commit, error) {
 	path, err := s.repoPath(owner, name)
 	if err != nil {
@@ -407,6 +501,22 @@ func (s *Service) Commits(ctx context.Context, owner, name, ref string, limit in
 		commits = append(commits, Commit{Hash: parts[0], Author: parts[1], Email: parts[2], Date: parts[3], Subject: parts[4]})
 	}
 	return commits, nil
+}
+
+func mergeRefs(source, target string) (string, string, error) {
+	source = strings.TrimSpace(source)
+	target = strings.TrimSpace(target)
+	if source == "" || target == "" {
+		return "", "", errors.New("source and target branches are required")
+	}
+	if unsafeRevision(source) || unsafeRevision(target) {
+		return "", "", errors.New("invalid source or target branch")
+	}
+	return "refs/heads/" + source, "refs/heads/" + target, nil
+}
+
+func verifyBranch(ctx context.Context, repoPath, ref string) error {
+	return exec.CommandContext(ctx, "git", "--git-dir", repoPath, "show-ref", "--verify", "--quiet", ref).Run()
 }
 
 func (s *Service) Tree(ctx context.Context, owner, name, ref, treePath string) ([]TreeEntry, error) {

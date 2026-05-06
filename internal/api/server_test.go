@@ -202,6 +202,15 @@ func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	if len(pulls) == 0 {
 		t.Fatalf("expected pull request list response")
 	}
+	review := get(t, ts.URL+"/api/repos/alice/demo/pulls/1/review", token, http.StatusOK)
+	if review["merge_check"] == nil {
+		t.Fatalf("expected merge check response: %+v", review)
+	}
+	merged := post(t, ts.URL+"/api/repos/alice/demo/pulls/1/merge", token, map[string]string{}, http.StatusOK)
+	mergedPull := merged["pull"].(map[string]any)
+	if mergedPull["status"] != "merged" {
+		t.Fatalf("expected merged pull request, got %+v", merged)
+	}
 
 	if jobs.Len() != 1 {
 		t.Fatalf("expected one sync job after git push, got %d", jobs.Len())

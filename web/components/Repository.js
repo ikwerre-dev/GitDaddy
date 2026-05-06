@@ -294,9 +294,23 @@ function EmptyRepo({ clone }) {
 function CommitView({ state }) {
   return (
     <Panel className="overflow-hidden">
-      <div className="border-b border-[#d0d7de] px-4 py-3">
-        <strong className="text-sm font-semibold">Commits</strong>
-        <p className="mt-1 text-sm text-[#57606a]">{state.commits.length} commits</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d0d7de] px-4 py-3">
+        <div>
+          <strong className="text-sm font-semibold">Commits</strong>
+          <p className="mt-1 text-sm text-[#57606a]">{state.commits.length} commits on {state.ref || "HEAD"}</p>
+        </div>
+        <Select
+          value={state.ref}
+          onChange={(event) => state.changeRef(event.target.value)}
+          className="h-8 min-w-40 text-sm"
+        >
+          <option value="HEAD">HEAD</option>
+          {state.branches.map((branch) => (
+            <option key={branch.name} value={branch.name}>
+              {branch.name}
+            </option>
+          ))}
+        </Select>
       </div>
       <div className="divide-y divide-[#d0d7de]">
         {state.commits.length ? (
@@ -362,9 +376,11 @@ function BranchView({ state }) {
           <p className="p-4 text-sm text-[#57606a]">No branches found.</p>
         )}
       </Panel>
-      <Panel className="p-4">
-        <BranchForm state={state} />
-      </Panel>
+      {state.user ? (
+        <Panel className="p-4">
+          <BranchForm state={state} />
+        </Panel>
+      ) : null}
     </div>
   );
 }
@@ -396,33 +412,96 @@ function BranchForm({ state }) {
 
 function PullRequestView({ state }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-      <Panel className="divide-y divide-[#d0d7de] overflow-hidden">
+    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+      <Panel className="overflow-hidden">
+        <div className="border-b border-[#d0d7de] bg-[#f6f8fa] px-4 py-3">
+          <strong className="text-sm font-semibold">Pull requests</strong>
+          <p className="mt-1 text-sm text-[#57606a]">Review, check conflicts, and merge branches.</p>
+        </div>
         {state.pulls.length ? (
-          state.pulls.map((pull) => (
-            <article className="px-4 py-3" key={pull.id}>
-              <div className="flex items-start gap-3">
-                <Icon icon={GitPullRequestIcon} size={18} className="text-[#1f883d]" />
-                <div>
-                  <strong className="text-sm">
-                    #{pull.id} {pull.title}
-                  </strong>
-                  <p className="mt-1 text-sm text-[#57606a]">
-                    {pull.source} → {pull.target} · {pull.status}
-                  </p>
-                  {pull.body ? <p className="mt-2 text-sm">{pull.body}</p> : null}
-                </div>
-              </div>
-            </article>
-          ))
+          <div className="divide-y divide-[#d0d7de]">
+            {state.pulls.map((pull) => (
+              <PullRequestCard key={pull.id} pull={pull} state={state} />
+            ))}
+          </div>
         ) : (
-          <p className="p-4 text-sm text-[#57606a]">No pull requests yet.</p>
+          <div className="grid justify-items-center gap-3 p-10 text-center">
+            <Icon icon={GitPullRequestIcon} size={40} className="text-[#57606a]" />
+            <strong>No pull requests yet</strong>
+            <p className="max-w-md text-sm leading-6 text-[#57606a]">
+              Create a feature branch, push it, then open a pull request to review and merge it here.
+            </p>
+          </div>
         )}
       </Panel>
-      <Panel className="p-4">
-        <PullForm state={state} />
-      </Panel>
+      {state.user ? (
+        <Panel className="p-4">
+          <PullForm state={state} />
+        </Panel>
+      ) : null}
     </div>
+  );
+}
+
+function PullRequestCard({ pull, state }) {
+  const check = pull.merge_check;
+  const canMerge = pull.status === "open" && check?.mergeable;
+  const statusClass = pull.status === "merged"
+    ? "border-[#8250df] bg-[#fbefff] text-[#8250df]"
+    : check?.conflict
+      ? "border-[#d1242f] bg-[#ffebe9] text-[#d1242f]"
+      : check?.mergeable
+        ? "border-[#1f883d] bg-[#dafbe1] text-[#1f883d]"
+        : "border-[#d0d7de] bg-[#f6f8fa] text-[#57606a]";
+  const statusText = pull.status === "merged"
+    ? "Merged"
+    : check?.conflict
+      ? "Conflicts"
+      : check?.mergeable
+        ? "Ready to merge"
+        : pull.status;
+
+  return (
+    <article className="grid gap-4 px-4 py-4">
+      <div className="flex items-start gap-3">
+        <Icon icon={GitPullRequestIcon} size={20} className={pull.status === "merged" ? "text-[#8250df]" : "text-[#1f883d]"} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-sm">#{pull.id} {pull.title}</strong>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass}`}>{statusText}</span>
+          </div>
+          <p className="mt-1 text-sm text-[#57606a]">
+            wants to merge <code className="rounded bg-[#f6f8fa] px-1">{pull.source}</code> into <code className="rounded bg-[#f6f8fa] px-1">{pull.target}</code>
+          </p>
+          {pull.body ? <p className="mt-3 text-sm leading-6">{pull.body}</p> : null}
+          {check ? (
+            <div className={`mt-3 rounded-md border p-3 text-sm ${statusClass}`}>
+              {check.message || (check.mergeable ? "This branch can be merged cleanly." : "Merge status needs review.")}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border border-[#d0d7de] bg-[#f6f8fa] px-3 text-sm font-medium hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={state.busy || pull.status !== "open"}
+          onClick={() => state.reviewPullRequest(pull.id)}
+          type="button"
+        >
+          Check conflicts
+        </button>
+        {state.user ? (
+          <button
+            className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border border-[#1f883d] bg-[#1f883d] px-3 text-sm font-medium text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={state.busy || !canMerge}
+            onClick={() => state.mergePullRequest(pull.id)}
+            type="button"
+          >
+            Merge pull request
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 

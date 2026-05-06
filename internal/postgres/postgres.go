@@ -355,6 +355,28 @@ func (s *Store) ListPullRequests(ctx context.Context, repoID int64) ([]repo.Pull
 	return pulls, rows.Err()
 }
 
+func (s *Store) FindPullRequest(ctx context.Context, repoID, pullID int64) (repo.PullRequest, error) {
+	var pull repo.PullRequest
+	err := s.db.QueryRowContext(ctx, `SELECT id, repo_id, title, body, source, target, status, author_id, created_at FROM pull_requests WHERE repo_id = $1 AND id = $2`, repoID, pullID).
+		Scan(&pull.ID, &pull.RepoID, &pull.Title, &pull.Body, &pull.Source, &pull.Target, &pull.Status, &pull.AuthorID, &pull.CreatedAt)
+	if err != nil {
+		return repo.PullRequest{}, err
+	}
+	return pull, nil
+}
+
+func (s *Store) UpdatePullRequestStatus(ctx context.Context, repoID, pullID int64, status string) (repo.PullRequest, error) {
+	var pull repo.PullRequest
+	err := s.db.QueryRowContext(ctx, `
+UPDATE pull_requests SET status = $3 WHERE repo_id = $1 AND id = $2
+RETURNING id, repo_id, title, body, source, target, status, author_id, created_at`, repoID, pullID, status).
+		Scan(&pull.ID, &pull.RepoID, &pull.Title, &pull.Body, &pull.Source, &pull.Target, &pull.Status, &pull.AuthorID, &pull.CreatedAt)
+	if err != nil {
+		return repo.PullRequest{}, err
+	}
+	return pull, nil
+}
+
 func (s *UserStore) CreateUser(ctx context.Context, user auth.User) (auth.User, error) {
 	return s.store.CreateUser(ctx, user)
 }
@@ -445,4 +467,12 @@ func (s *PullRequestStore) CreatePullRequest(ctx context.Context, pull repo.Pull
 
 func (s *PullRequestStore) ListPullRequests(ctx context.Context, repoID int64) ([]repo.PullRequest, error) {
 	return s.store.ListPullRequests(ctx, repoID)
+}
+
+func (s *PullRequestStore) FindPullRequest(ctx context.Context, repoID, pullID int64) (repo.PullRequest, error) {
+	return s.store.FindPullRequest(ctx, repoID, pullID)
+}
+
+func (s *PullRequestStore) UpdatePullRequestStatus(ctx context.Context, repoID, pullID int64, status string) (repo.PullRequest, error) {
+	return s.store.UpdatePullRequestStatus(ctx, repoID, pullID, status)
 }

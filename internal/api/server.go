@@ -61,6 +61,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/repos/{owner}/{repo}/branches", s.createBranch)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulls", s.listPullRequests)
 	mux.HandleFunc("POST /api/repos/{owner}/{repo}/pulls", s.createPullRequest)
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulls/{id}/review", s.reviewPullRequest)
+	mux.HandleFunc("POST /api/repos/{owner}/{repo}/pulls/{id}/merge", s.mergePullRequest)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", s.repoCommits)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/tree", s.repoTree)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/file", s.repoFile)
@@ -398,7 +400,7 @@ func (s *Server) createBranch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listPullRequests(w http.ResponseWriter, r *http.Request) {
-	_, repository, ok := s.resolveRepo(w, r)
+	owner, repository, ok := s.resolveRepo(w, r)
 	if !ok {
 		return
 	}
@@ -410,7 +412,11 @@ func (s *Server) listPullRequests(w http.ResponseWriter, r *http.Request) {
 	if pulls == nil {
 		pulls = []repo.PullRequest{}
 	}
-	writeJSON(w, http.StatusOK, pulls)
+	response := make([]map[string]any, 0, len(pulls))
+	for _, pull := range pulls {
+		response = append(response, s.pullResponse(r.Context(), owner.Username, repository.Name, pull))
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) createPullRequest(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +443,60 @@ func (s *Server) createPullRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, pull)
+}
+
+func (s *Server) reviewPullRequest(w http.ResponseWriter, r *http.Request) {
+	owner, repository, pull, ok := s.resolvePullRequest(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.pullResponse(r.Context(), owner.Username, repository.Name, pull))
+}
+
+func (s *Server) mergePullRequest(w http.ResponseWriter, r *http.Request) {
+	owner, repository, pull, ok := s.resolvePullRequest(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleWrite) {
+		return
+	}
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if pull.Status != "open" {
+		writeError(w, http.StatusBadRequest, errString("only open pull requests can be merged"))
+		return
+	}
+	check, err := s.git.CheckMerge(r.Context(), owner.Username, repository.Name, pull.Source, pull.Target)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if check.Merged {
+		updated, err := s.repos.UpdatePullRequestStatus(r.Context(), repository.ID, pull.ID, "merged")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pull": s.pullResponse(r.Context(), owner.Username, repository.Name, updated), "merge_check": check})
+		return
+	}
+	if !check.Mergeable {
+		writeError(w, http.StatusConflict, errString("pull request has conflicts"))
+		return
+	}
+	commit, err := s.git.MergeBranches(r.Context(), owner.Username, repository.Name, pull.Source, pull.Target, fmt.Sprintf("Merge pull request #%d: %s", pull.ID, pull.Title), user.Username, user.Email)
+	if err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	updated, err := s.repos.UpdatePullRequestStatus(r.Context(), repository.ID, pull.ID, "merged")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	_ = s.enqueueRepoSync(r.Context(), owner.Username, repository.Name)
+	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "Pull request merged", fmt.Sprintf("#%d merged into %s", pull.ID, pull.Target))
+	writeJSON(w, http.StatusOK, map[string]any{"pull": s.pullResponse(r.Context(), owner.Username, repository.Name, updated), "commit": commit})
 }
 
 func (s *Server) repoCommits(w http.ResponseWriter, r *http.Request) {
@@ -683,6 +743,47 @@ func (s *Server) enqueueRepoSync(ctx context.Context, owner, name string) error 
 	}
 	log.Printf("r2 sync queued owner=%s repo=%s key=%s pending_jobs=%d", owner, name, key, queueLen(s.queue))
 	return nil
+}
+
+func (s *Server) resolvePullRequest(w http.ResponseWriter, r *http.Request) (auth.User, repo.Repository, repo.PullRequest, bool) {
+	owner, repository, ok := s.resolveRepo(w, r)
+	if !ok {
+		return auth.User{}, repo.Repository{}, repo.PullRequest{}, false
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return auth.User{}, repo.Repository{}, repo.PullRequest{}, false
+	}
+	pull, err := s.repos.FindPullRequest(r.Context(), repository.ID, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return auth.User{}, repo.Repository{}, repo.PullRequest{}, false
+	}
+	return owner, repository, pull, true
+}
+
+func (s *Server) pullResponse(ctx context.Context, owner, name string, pull repo.PullRequest) map[string]any {
+	response := map[string]any{
+		"id":         pull.ID,
+		"repo_id":    pull.RepoID,
+		"title":      pull.Title,
+		"body":       pull.Body,
+		"source":     pull.Source,
+		"target":     pull.Target,
+		"status":     pull.Status,
+		"author_id":  pull.AuthorID,
+		"created_at": pull.CreatedAt,
+	}
+	if pull.Status == "open" {
+		check, err := s.git.CheckMerge(ctx, owner, name, pull.Source, pull.Target)
+		if err == nil {
+			response["merge_check"] = check
+		} else {
+			response["merge_check"] = git.MergeCheck{Mergeable: false, Conflict: true, Message: err.Error()}
+		}
+	}
+	return response
 }
 
 func queueLen(q queue.Queue) int {

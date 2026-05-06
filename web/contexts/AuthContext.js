@@ -23,6 +23,11 @@ export function AuthProvider({ children, state }) {
 
     const isAuthPage = pathname === "/auth";
     const isLandingPage = pathname === "/";
+    const segments = pathname.split("/").filter(Boolean);
+    const isPublicPage =
+      isLandingPage ||
+      isAuthPage ||
+      ((segments.length === 1 || segments.length === 2) && !["dashboard", "auth"].includes(segments[0]));
     const isAuthenticated = !!(state.token && state.user);
 
     // Redirect to dashboard if authenticated and on auth/landing page
@@ -30,7 +35,7 @@ export function AuthProvider({ children, state }) {
       router.push("/dashboard");
     }
     // Redirect to auth if not authenticated and not on public pages
-    else if (!isAuthenticated && !isAuthPage && !isLandingPage) {
+    else if (!isAuthenticated && !isPublicPage) {
       router.push("/auth");
     }
   }, [isInitialized, state.token, state.user, pathname, router]);

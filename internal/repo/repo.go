@@ -68,6 +68,8 @@ type PermissionStore interface {
 type PullRequestStore interface {
 	CreatePullRequest(context.Context, PullRequest) (PullRequest, error)
 	ListPullRequests(context.Context, int64) ([]PullRequest, error)
+	FindPullRequest(context.Context, int64, int64) (PullRequest, error)
+	UpdatePullRequestStatus(context.Context, int64, int64, string) (PullRequest, error)
 }
 
 type Service struct {
@@ -187,6 +189,18 @@ func (s *Service) CreatePullRequest(ctx context.Context, repoID, authorID int64,
 
 func (s *Service) ListPullRequests(ctx context.Context, repoID int64) ([]PullRequest, error) {
 	return s.pulls.ListPullRequests(ctx, repoID)
+}
+
+func (s *Service) FindPullRequest(ctx context.Context, repoID, pullID int64) (PullRequest, error) {
+	return s.pulls.FindPullRequest(ctx, repoID, pullID)
+}
+
+func (s *Service) UpdatePullRequestStatus(ctx context.Context, repoID, pullID int64, status string) (PullRequest, error) {
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status != "open" && status != "merged" && status != "closed" {
+		return PullRequest{}, errors.New("pull request status must be open, merged, or closed")
+	}
+	return s.pulls.UpdatePullRequestStatus(ctx, repoID, pullID, status)
 }
 
 func (s *Service) CanRead(ctx context.Context, repository Repository, userID int64) bool {
@@ -397,4 +411,28 @@ func (s *MemoryPullRequestStore) ListPullRequests(_ context.Context, repoID int6
 	defer s.mu.RUnlock()
 	pulls := append([]PullRequest(nil), s.pulls[repoID]...)
 	return pulls, nil
+}
+
+func (s *MemoryPullRequestStore) FindPullRequest(_ context.Context, repoID, pullID int64) (PullRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, pull := range s.pulls[repoID] {
+		if pull.ID == pullID {
+			return pull, nil
+		}
+	}
+	return PullRequest{}, errors.New("pull request not found")
+}
+
+func (s *MemoryPullRequestStore) UpdatePullRequestStatus(_ context.Context, repoID, pullID int64, status string) (PullRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index, pull := range s.pulls[repoID] {
+		if pull.ID == pullID {
+			pull.Status = status
+			s.pulls[repoID][index] = pull
+			return pull, nil
+		}
+	}
+	return PullRequest{}, errors.New("pull request not found")
 }
