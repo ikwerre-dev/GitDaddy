@@ -9,7 +9,7 @@ export function Button({ children, variant = "default", className = "", ...props
   };
   return (
     <button
-      className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
