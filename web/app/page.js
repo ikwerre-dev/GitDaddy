@@ -23,6 +23,20 @@ import {
   Unlock,
   User,
 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Activity01Icon,
+  CloudUploadIcon,
+  CodeFolderIcon,
+  Copy01Icon,
+  DatabaseSyncIcon,
+  GitBranchIcon as HugeGitBranchIcon,
+  GithubIcon,
+  RepositoryIcon,
+  ServerStack03Icon,
+  ShieldKeyIcon,
+  TerminalIcon,
+} from "@hugeicons/core-free-icons";
 
 const tokenKey = "gitdaddy_token";
 const userKey = "gitdaddy_user";
@@ -335,138 +349,201 @@ function AuthScreen({ busy, message, onSubmit }) {
   const [mode, setMode] = useState("login");
   const cloneCommand = "git clone http://localhost:8080/git/robinson/api.git";
   const pushCommand = "git push origin main";
-  return (
-    <main className="landingShell">
-      <div className="landingRail left" aria-hidden="true" />
-      <div className="landingRail right" aria-hidden="true" />
-      <section className="landingFrame">
-        <header className="landingHero">
-          <nav className="landingNav">
-            <div className="landingBrand">
-              <span className="landingMark">
-                <Code2 size={22} />
-              </span>
-              <span>GitDaddy</span>
-            </div>
-            <div className="landingMeta">
-              <span>self-hosted</span>
-              <span>R2-backed</span>
-              <span>normal Git CLI</span>
-            </div>
-          </nav>
-
-          <div className="landingTitle">
-            <p>Open-source GitHub alternative</p>
-            <h1>GitDaddy</h1>
-          </div>
-        </header>
-
-        <div className="landingCommandBar">
-          <div>
-            <Terminal size={19} />
-            <span>{cloneCommand}</span>
-          </div>
-          <button type="button" title="Copy clone command" onClick={() => navigator.clipboard?.writeText(cloneCommand)}>
-            <Copy size={18} />
-          </button>
-        </div>
-
-        <div className="landingGrid">
-          <article className="landingPitch">
-            <span className="landingNumber">01</span>
-            <h2>Host repos like GitHub, run them from your own stack.</h2>
-            <p>
-              GitDaddy serves clone, fetch, pull, and push over normal Git smart HTTP while the backend handles auth,
-              repository metadata, branch views, commit history, diffs, and async R2 snapshots.
-            </p>
-          </article>
-
-          <div className="landingPattern" aria-hidden="true" />
-
-          <form
-            className="landingAuth authForm"
-            onSubmit={(event) => {
-              event.preventDefault();
-              onSubmit(Object.fromEntries(new FormData(event.currentTarget)), mode);
-            }}
-          >
-            <div>
-              <span className="landingNumber">access</span>
-              <h2>{mode === "login" ? "Enter your GitDaddy workspace." : "Create your GitDaddy account."}</h2>
-            </div>
-            <input name="username" placeholder="Username" required />
-            {mode === "register" ? <input name="email" placeholder="Email" /> : null}
-            <input name="password" placeholder="Password" type="password" required />
-            <div className="segmented">
-              <button type="button" className={mode === "login" ? "selected" : ""} onClick={() => setMode("login")}>
-                Login
-              </button>
-              <button type="button" className={mode === "register" ? "selected" : ""} onClick={() => setMode("register")}>
-                Sign up
-              </button>
-            </div>
-            <button className="primary" disabled={busy} type="submit">
-              <KeyRound size={18} />
-              {mode === "login" ? "Login" : "Create account"}
-            </button>
-            {message ? <p className="message">{message}</p> : null}
-          </form>
-
-          <article className="landingCode">
-            <div className="landingCodeHead">
-              <div>
-                <span className="landingNumber">git</span>
-                <h2>Use the Git commands you already know.</h2>
-              </div>
-              <button type="button" title="Copy push command" onClick={() => navigator.clipboard?.writeText(pushCommand)}>
-                <Copy size={18} />
-              </button>
-            </div>
-            <pre>
-              <code>{`git remote add origin http://localhost:8080/git/robinson/api.git
+  const commandBlock = `git remote add origin http://localhost:8080/git/robinson/api.git
 git fetch origin
 git pull origin main
-git push origin main`}</code>
-            </pre>
-          </article>
+git push origin main`;
+  return (
+    <main className="min-h-screen bg-white text-neutral-950 [background-image:linear-gradient(#e8e8e8_1px,transparent_1px),linear-gradient(90deg,#e8e8e8_1px,transparent_1px)] [background-size:72px_72px]">
+      <section className="mx-auto min-h-screen max-w-[1480px] px-3 py-3 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
+        <div className="border border-neutral-950 bg-white shadow-[12px_12px_0_#111]">
+          <header className="border-b border-neutral-950">
+            <nav className="flex min-h-16 items-center justify-between border-b border-neutral-200 px-4 sm:px-6">
+              <div className="flex items-center gap-3 font-black">
+                <span className="grid h-10 w-10 place-items-center border border-neutral-950 bg-lime-300">
+                  <LandingIcon icon={GithubIcon} size={23} />
+                </span>
+                <span>GitDaddy</span>
+              </div>
+              <div className="hidden items-center gap-2 text-xs font-black uppercase text-neutral-600 md:flex">
+                <span className="border border-neutral-300 px-3 py-1">GitHub alternative</span>
+                <span className="border border-neutral-300 px-3 py-1">Smart HTTP Git</span>
+                <span className="border border-neutral-300 px-3 py-1">R2 snapshots</span>
+              </div>
+            </nav>
 
-          <article className="landingStack">
-            <span className="landingNumber">02</span>
-            <h2>Production pieces, open-source shape.</h2>
-            <div className="landingStackList">
-              <span>
-                <GitBranch size={18} /> Smart HTTP Git protocol
-              </span>
-              <span>
-                <ShieldCheck size={18} /> Token auth and repo permissions
-              </span>
-              <span>
-                <Box size={18} /> PostgreSQL, Redis, R2 snapshots
-              </span>
-              <span>
-                <Activity size={18} /> Worker sync outside request path
-              </span>
-            </div>
-          </article>
+            <div className="grid lg:grid-cols-[1fr_360px]">
+              <div className="px-4 py-12 sm:px-8 sm:py-16 lg:px-12">
+                <p className="mb-4 flex items-center gap-2 text-xs font-black uppercase text-neutral-600">
+                  <LandingIcon icon={RepositoryIcon} size={18} />
+                  Self-hosted Git platform for real Git commands
+                </p>
+                <h1 className="text-[64px] font-black leading-[0.9] text-neutral-950 sm:text-[104px] lg:text-[168px]">GitDaddy</h1>
+                <p className="mt-7 max-w-3xl text-lg font-semibold leading-8 text-neutral-700">
+                  A clean, open-source GitHub alternative with normal clone, fetch, pull, and push workflows,
+                  browser repository views, Postgres metadata, Redis queues, and fast async R2 backup sync.
+                </p>
+              </div>
 
-          <article className="landingStats">
-            <div>
-              <strong>clone</strong>
-              <span>Serve repos from local cache or restore from R2.</span>
+              <div className="grid border-t border-neutral-950 lg:border-l lg:border-t-0">
+                {[
+                  ["clone", "Restore from cache or R2"],
+                  ["push", "Write fast, sync later"],
+                  ["browse", "Files, commits, diffs"],
+                ].map(([label, text]) => (
+                  <div className="grid content-center gap-2 border-b border-neutral-950 p-6 last:border-b-0" key={label}>
+                    <strong className="text-4xl font-black">{label}</strong>
+                    <span className="text-sm font-bold text-neutral-600">{text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div>
-              <strong>push</strong>
-              <span>Accept writes fast, queue compressed snapshots async.</span>
+          </header>
+
+          <div className="flex min-h-16 items-center justify-between gap-3 border-b border-neutral-950 bg-neutral-950 px-4 text-white sm:px-6">
+            <div className="flex min-w-0 items-center gap-3 font-mono text-xs sm:text-sm">
+              <LandingIcon icon={TerminalIcon} size={20} />
+              <span className="truncate">{cloneCommand}</span>
             </div>
-            <div>
-              <strong>browse</strong>
-              <span>View files, commits, branches, diffs, and settings.</span>
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center border border-white/40 bg-white text-neutral-950"
+              type="button"
+              title="Copy clone command"
+              onClick={() => navigator.clipboard?.writeText(cloneCommand)}
+            >
+              <LandingIcon icon={Copy01Icon} size={18} />
+            </button>
+          </div>
+
+          <div className="grid lg:grid-cols-[1fr_420px]">
+            <div className="grid md:grid-cols-2">
+              <article className="min-h-[300px] border-b border-neutral-950 p-6 sm:p-8 md:border-r">
+                <span className="text-xs font-black uppercase text-neutral-500">01 / concept</span>
+                <h2 className="mt-5 text-4xl font-black leading-tight sm:text-5xl">Your own GitHub-style control room.</h2>
+                <p className="mt-5 max-w-xl text-base font-medium leading-7 text-neutral-700">
+                  Create repositories, manage visibility, inspect branches, read commit history, open file trees,
+                  and review diffs from the web UI while developers keep using standard Git.
+                </p>
+              </article>
+
+              <div
+                className="min-h-[300px] border-b border-neutral-950 bg-neutral-100 [background-image:repeating-linear-gradient(135deg,#111_0_1px,transparent_1px_12px)]"
+                aria-hidden="true"
+              />
+
+              <article className="border-b border-neutral-950 p-6 sm:p-8 md:col-span-2 md:border-r">
+                <div className="flex items-start justify-between gap-5">
+                  <div>
+                    <span className="text-xs font-black uppercase text-neutral-500">git transport</span>
+                    <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">No custom CLI. Just Git.</h2>
+                  </div>
+                  <button
+                    className="grid h-11 w-11 shrink-0 place-items-center border border-neutral-950 bg-lime-300"
+                    type="button"
+                    title="Copy push command"
+                    onClick={() => navigator.clipboard?.writeText(pushCommand)}
+                  >
+                    <LandingIcon icon={Copy01Icon} size={19} />
+                  </button>
+                </div>
+                <pre className="mt-6 overflow-auto border border-neutral-950 bg-neutral-950 p-5 font-mono text-sm leading-7 text-lime-200">
+                  <code>{commandBlock}</code>
+                </pre>
+              </article>
+
+              <article className="grid gap-4 border-b border-neutral-950 p-6 sm:p-8 md:border-r lg:border-b-0">
+                <span className="text-xs font-black uppercase text-neutral-500">backend path</span>
+                {[
+                  [HugeGitBranchIcon, "Smart HTTP Git protocol"],
+                  [ShieldKeyIcon, "Token auth and repository permissions"],
+                  [DatabaseSyncIcon, "PostgreSQL metadata and Redis queues"],
+                  [CloudUploadIcon, "LZ4-compressed async R2 snapshots"],
+                ].map(([icon, text]) => (
+                  <div className="flex items-center gap-3 border border-neutral-200 bg-neutral-50 p-3 font-black" key={text}>
+                    <LandingIcon icon={icon} size={20} />
+                    <span>{text}</span>
+                  </div>
+                ))}
+              </article>
+
+              <article className="grid content-between gap-8 border-b border-neutral-950 p-6 sm:p-8 lg:border-b-0">
+                <div>
+                  <span className="text-xs font-black uppercase text-neutral-500">system shape</span>
+                  <h2 className="mt-3 text-3xl font-black leading-tight">Fast local Git, durable object storage.</h2>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    [ServerStack03Icon, "Go API"],
+                    [CodeFolderIcon, "Repo browser"],
+                    [Activity01Icon, "Worker sync"],
+                    [CloudUploadIcon, "R2 backup"],
+                  ].map(([icon, label]) => (
+                    <div className="grid min-h-24 place-items-center border border-neutral-950 bg-white text-center font-black" key={label}>
+                      <LandingIcon icon={icon} size={25} />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
             </div>
-          </article>
+
+            <aside className="border-neutral-950 bg-[#f7f4ec] lg:border-l">
+              <form
+                className="grid gap-4 p-6 sm:p-8 lg:sticky lg:top-8"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSubmit(Object.fromEntries(new FormData(event.currentTarget)), mode);
+                }}
+              >
+                <div>
+                  <span className="text-xs font-black uppercase text-neutral-500">workspace access</span>
+                  <h2 className="mt-3 text-3xl font-black leading-tight">
+                    {mode === "login" ? "Enter GitDaddy." : "Create GitDaddy account."}
+                  </h2>
+                </div>
+                <input className="min-h-12 border border-neutral-950 bg-white px-3 font-bold outline-none" name="username" placeholder="Username" required />
+                {mode === "register" ? (
+                  <input className="min-h-12 border border-neutral-950 bg-white px-3 font-bold outline-none" name="email" placeholder="Email" />
+                ) : null}
+                <input
+                  className="min-h-12 border border-neutral-950 bg-white px-3 font-bold outline-none"
+                  name="password"
+                  placeholder="Password"
+                  type="password"
+                  required
+                />
+                <div className="grid grid-cols-2 border border-neutral-950 bg-white p-1">
+                  <button
+                    type="button"
+                    className={mode === "login" ? "min-h-10 bg-neutral-950 font-black text-white" : "min-h-10 font-black text-neutral-600"}
+                    onClick={() => setMode("login")}
+                  >
+                    Login
+                  </button>
+                  <button
+                    type="button"
+                    className={mode === "register" ? "min-h-10 bg-neutral-950 font-black text-white" : "min-h-10 font-black text-neutral-600"}
+                    onClick={() => setMode("register")}
+                  >
+                    Sign up
+                  </button>
+                </div>
+                <button className="flex min-h-12 items-center justify-center gap-2 border border-neutral-950 bg-lime-300 px-4 font-black text-neutral-950" disabled={busy} type="submit">
+                  <LandingIcon icon={ShieldKeyIcon} size={19} />
+                  {mode === "login" ? "Login" : "Create account"}
+                </button>
+                {message ? <p className="border border-amber-500 bg-amber-50 p-3 text-sm font-bold text-amber-900">{message}</p> : null}
+              </form>
+            </aside>
+          </div>
         </div>
       </section>
     </main>
   );
+}
+
+function LandingIcon({ icon, size = 20, className = "" }) {
+  return <HugeiconsIcon className={className} color="currentColor" icon={icon} size={size} strokeWidth={1.7} />;
 }
 
 function CreateRepo({ busy, onSubmit }) {

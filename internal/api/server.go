@@ -51,6 +51,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/repos/{owner}/{repo}", s.updateRepo)
 	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", s.deleteRepo)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", s.repoBranches)
+	mux.HandleFunc("POST /api/repos/{owner}/{repo}/branches", s.createBranch)
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulls", s.listPullRequests)
+	mux.HandleFunc("POST /api/repos/{owner}/{repo}/pulls", s.createPullRequest)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", s.repoCommits)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/tree", s.repoTree)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/file", s.repoFile)
@@ -278,6 +281,65 @@ func (s *Server) repoBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, branches)
+}
+
+func (s *Server) createBranch(w http.ResponseWriter, r *http.Request) {
+	owner, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleWrite) {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+		From string `json:"from"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	branch, err := s.git.CreateBranch(r.Context(), owner.Username, repository.Name, req.Name, req.From)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, branch)
+}
+
+func (s *Server) listPullRequests(w http.ResponseWriter, r *http.Request) {
+	_, repository, ok := s.resolveRepo(w, r)
+	if !ok {
+		return
+	}
+	pulls, err := s.repos.ListPullRequests(r.Context(), repository.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pulls)
+}
+
+func (s *Server) createPullRequest(w http.ResponseWriter, r *http.Request) {
+	_, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleWrite) {
+		return
+	}
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	pull, err := s.repos.CreatePullRequest(r.Context(), repository.ID, user.ID, req.Title, req.Body, req.Source, req.Target)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, pull)
 }
 
 func (s *Server) repoCommits(w http.ResponseWriter, r *http.Request) {

@@ -42,6 +42,18 @@ type Permission struct {
 	Role   Role  `json:"role"`
 }
 
+type PullRequest struct {
+	ID         int64     `json:"id"`
+	RepoID     int64     `json:"repo_id"`
+	Title      string    `json:"title"`
+	Body       string    `json:"body"`
+	Source     string    `json:"source"`
+	Target     string    `json:"target"`
+	Status     string    `json:"status"`
+	AuthorID   int64     `json:"author_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type PermissionStore interface {
 	Grant(context.Context, Permission) error
 	Revoke(context.Context, int64, int64) error
@@ -49,17 +61,23 @@ type PermissionStore interface {
 	Find(context.Context, int64, int64) (Permission, error)
 }
 
+type PullRequestStore interface {
+	CreatePullRequest(context.Context, PullRequest) (PullRequest, error)
+	ListPullRequests(context.Context, int64) ([]PullRequest, error)
+}
+
 type Service struct {
 	store       Store
 	permissions PermissionStore
+	pulls       PullRequestStore
 }
 
 func NewService(store Store) *Service {
-	return &Service{store: store, permissions: NewMemoryPermissionStore()}
+	return &Service{store: store, permissions: NewMemoryPermissionStore(), pulls: NewMemoryPullRequestStore()}
 }
 
 func NewServiceWithPermissions(store Store, permissions PermissionStore) *Service {
-	return &Service{store: store, permissions: permissions}
+	return &Service{store: store, permissions: permissions, pulls: NewMemoryPullRequestStore()}
 }
 
 func (s *Service) Create(ctx context.Context, ownerID int64, name, visibility string) (Repository, error) {
@@ -117,6 +135,35 @@ func (s *Service) Revoke(ctx context.Context, repoID, userID int64) error {
 
 func (s *Service) ListPermissions(ctx context.Context, repoID int64) ([]Permission, error) {
 	return s.permissions.ListByRepo(ctx, repoID)
+}
+
+func (s *Service) CreatePullRequest(ctx context.Context, repoID, authorID int64, title, body, source, target string) (PullRequest, error) {
+	title = strings.TrimSpace(title)
+	source = strings.TrimSpace(source)
+	target = strings.TrimSpace(target)
+	if title == "" {
+		return PullRequest{}, errors.New("pull request title is required")
+	}
+	if source == "" || target == "" {
+		return PullRequest{}, errors.New("source and target branches are required")
+	}
+	if source == target {
+		return PullRequest{}, errors.New("source and target branches must differ")
+	}
+	return s.pulls.CreatePullRequest(ctx, PullRequest{
+		RepoID:    repoID,
+		Title:     title,
+		Body:      strings.TrimSpace(body),
+		Source:    source,
+		Target:    target,
+		Status:    "open",
+		AuthorID:  authorID,
+		CreatedAt: time.Now().UTC(),
+	})
+}
+
+func (s *Service) ListPullRequests(ctx context.Context, repoID int64) ([]PullRequest, error) {
+	return s.pulls.ListPullRequests(ctx, repoID)
 }
 
 func (s *Service) CanRead(ctx context.Context, repository Repository, userID int64) bool {
@@ -281,4 +328,30 @@ func (s *MemoryPermissionStore) Find(_ context.Context, repoID, userID int64) (P
 		return permission, nil
 	}
 	return Permission{}, errors.New("permission not found")
+}
+
+type MemoryPullRequestStore struct {
+	mu    sync.RWMutex
+	next  int64
+	pulls map[int64][]PullRequest
+}
+
+func NewMemoryPullRequestStore() *MemoryPullRequestStore {
+	return &MemoryPullRequestStore{next: 1, pulls: map[int64][]PullRequest{}}
+}
+
+func (s *MemoryPullRequestStore) CreatePullRequest(_ context.Context, pull PullRequest) (PullRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pull.ID = s.next
+	s.next++
+	s.pulls[pull.RepoID] = append([]PullRequest{pull}, s.pulls[pull.RepoID]...)
+	return pull, nil
+}
+
+func (s *MemoryPullRequestStore) ListPullRequests(_ context.Context, repoID int64) ([]PullRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pulls := append([]PullRequest(nil), s.pulls[repoID]...)
+	return pulls, nil
 }

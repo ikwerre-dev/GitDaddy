@@ -271,6 +271,33 @@ func (s *Service) Branches(ctx context.Context, owner, name string) ([]Branch, e
 	return branches, nil
 }
 
+func (s *Service) CreateBranch(ctx context.Context, owner, name, branch, from string) (Branch, error) {
+	path, err := s.repoPath(owner, name)
+	if err != nil {
+		return Branch{}, err
+	}
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return Branch{}, errors.New("branch name is required")
+	}
+	if from == "" {
+		from = "HEAD"
+	}
+	if unsafeRevision(from) {
+		return Branch{}, errors.New("invalid source revision")
+	}
+	if err := exec.CommandContext(ctx, "git", "check-ref-format", "--branch", branch).Run(); err != nil {
+		return Branch{}, errors.New("invalid branch name")
+	}
+	if err := exec.CommandContext(ctx, "git", "--git-dir", path, "show-ref", "--verify", "--quiet", "refs/heads/"+branch).Run(); err == nil {
+		return Branch{}, errors.New("branch already exists")
+	}
+	if err := exec.CommandContext(ctx, "git", "--git-dir", path, "branch", branch, from).Run(); err != nil {
+		return Branch{}, err
+	}
+	return Branch{Name: branch}, nil
+}
+
 func (s *Service) Commits(ctx context.Context, owner, name, ref string, limit int) ([]Commit, error) {
 	path, err := s.repoPath(owner, name)
 	if err != nil {
