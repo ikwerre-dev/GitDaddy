@@ -55,11 +55,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	snapshot, err := service.Snapshot("smoke", "repo")
+	compression := git.ParseSnapshotCompression(env("GITDADDY_SNAPSHOT_COMPRESSION", "lz4"))
+	snapshot, err := service.SnapshotWithOptions("smoke", "repo", git.SnapshotOptions{Compression: compression})
 	if err != nil {
 		log.Fatal(err)
 	}
-	key := fmt.Sprintf("smoke/gitdaddy-%d.tar.gz", time.Now().UnixNano())
+	key := fmt.Sprintf("smoke/gitdaddy-%d%s", time.Now().UnixNano(), compression.Extension())
 	if err := store.Put(ctx, key, snapshot); err != nil {
 		log.Fatal(err)
 	}

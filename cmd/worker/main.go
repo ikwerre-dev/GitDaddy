@@ -26,11 +26,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	compression := git.ParseSnapshotCompression(env("GITDADDY_SNAPSHOT_COMPRESSION", "lz4"))
 
 	jobs := queue.NewMemoryQueue()
-	processor := worker.NewProcessor(jobs, git.NewService(repoRoot), objects)
+	processor := worker.NewProcessorWithCompression(jobs, git.NewService(repoRoot), objects, compression)
 
-	log.Printf("gitdaddy worker started with %s object storage", objectMode)
+	log.Printf("gitdaddy worker started with %s object storage and %s snapshots", objectMode, compression)
 	for {
 		if err := processor.ProcessOne(context.Background()); err != nil {
 			log.Printf("worker idle/error: %v", err)

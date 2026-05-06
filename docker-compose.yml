@@ -38,6 +38,7 @@ services:
       GITDADDY_ADDR: ":8080"
       GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
       GITDADDY_OBJECT_ROOT: /var/lib/gitdaddy/objects
+      GITDADDY_SNAPSHOT_COMPRESSION: ${GITDADDY_SNAPSHOT_COMPRESSION:-lz4}
       DATABASE_URL: postgres://gitdaddy:gitdaddy@postgres:5432/gitdaddy?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       R2_ENDPOINT: ${R2_ENDPOINT:-}
@@ -63,6 +64,7 @@ services:
     environment:
       GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
       GITDADDY_OBJECT_ROOT: /var/lib/gitdaddy/objects
+      GITDADDY_SNAPSHOT_COMPRESSION: ${GITDADDY_SNAPSHOT_COMPRESSION:-lz4}
       DATABASE_URL: postgres://gitdaddy:gitdaddy@postgres:5432/gitdaddy?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       R2_ENDPOINT: ${R2_ENDPOINT:-}

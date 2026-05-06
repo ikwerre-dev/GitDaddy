@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/pierrec/lz4/v4"
 )
 
 type Service struct {
@@ -49,6 +51,51 @@ type RepositoryStats struct {
 	Objects  int    `json:"objects"`
 	Size     int64  `json:"size"`
 	Head     string `json:"head"`
+}
+
+type SnapshotCompression string
+
+const (
+	SnapshotCompressionGzip SnapshotCompression = "gzip"
+	SnapshotCompressionLZ4  SnapshotCompression = "lz4"
+	SnapshotCompressionNone SnapshotCompression = "none"
+)
+
+type SnapshotOptions struct {
+	Compression SnapshotCompression
+}
+
+func ParseSnapshotCompression(value string) SnapshotCompression {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "lz4":
+		return SnapshotCompressionLZ4
+	case "none", "tar":
+		return SnapshotCompressionNone
+	default:
+		return SnapshotCompressionGzip
+	}
+}
+
+func (c SnapshotCompression) Extension() string {
+	switch c {
+	case SnapshotCompressionLZ4:
+		return ".tar.lz4"
+	case SnapshotCompressionNone:
+		return ".tar"
+	default:
+		return ".tar.gz"
+	}
+}
+
+func (c SnapshotCompression) ContentEncoding() string {
+	switch c {
+	case SnapshotCompressionLZ4:
+		return "lz4"
+	case SnapshotCompressionGzip:
+		return "gzip"
+	default:
+		return ""
+	}
 }
 
 func NewService(root string) *Service {
@@ -106,13 +153,24 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) Snapshot(owner, name string) ([]byte, error) {
+	return s.SnapshotWithOptions(owner, name, SnapshotOptions{Compression: SnapshotCompressionGzip})
+}
+
+func (s *Service) SnapshotWithOptions(owner, name string, options SnapshotOptions) ([]byte, error) {
 	path, err := s.repoPath(owner, name)
 	if err != nil {
 		return nil, err
 	}
+	compression := options.Compression
+	if compression == "" {
+		compression = SnapshotCompressionGzip
+	}
 	var out bytes.Buffer
-	gz := gzip.NewWriter(&out)
-	tw := tar.NewWriter(gz)
+	writer, closeCompressor, err := compressedWriter(&out, compression)
+	if err != nil {
+		return nil, err
+	}
+	tw := tar.NewWriter(writer)
 	err = filepath.WalkDir(path, func(file string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -150,10 +208,28 @@ func (s *Service) Snapshot(owner, name string) ([]byte, error) {
 	if err := tw.Close(); err != nil {
 		return nil, err
 	}
-	if err := gz.Close(); err != nil {
+	if err := closeCompressor(); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func compressedWriter(out io.Writer, compression SnapshotCompression) (io.Writer, func() error, error) {
+	switch compression {
+	case SnapshotCompressionGzip:
+		gz := gzip.NewWriter(out)
+		return gz, gz.Close, nil
+	case SnapshotCompressionLZ4:
+		writer := lz4.NewWriter(out)
+		if err := writer.Apply(lz4.CompressionLevelOption(lz4.Fast)); err != nil {
+			return nil, nil, err
+		}
+		return writer, writer.Close, nil
+	case SnapshotCompressionNone:
+		return out, func() error { return nil }, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported snapshot compression %q", compression)
+	}
 }
 
 func (s *Service) RepoPath(owner, name string) (string, error) {

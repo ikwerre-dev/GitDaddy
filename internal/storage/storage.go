@@ -102,43 +102,80 @@ func NewR2ObjectStore(endpoint, bucket, accessKey, secretKey, region string) (*R
 }
 
 func (s *R2ObjectStore) Put(ctx context.Context, key string, body []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, s.objectURL(key), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	s.sign(req, body)
-	res, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		message, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return fmt.Errorf("r2 put failed: %s: %s", res.Status, strings.TrimSpace(string(message)))
-	}
-	return nil
+	bodyHash := sha256Hex(body)
+	return s.do(ctx, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, s.objectURL(key), bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("X-Amz-Meta-Gitdaddy-Content-Sha256", bodyHash)
+		req.Header.Set("X-Amz-Meta-Gitdaddy-Content-Length", fmt.Sprintf("%d", len(body)))
+		s.sign(req, body)
+		return req, nil
+	})
 }
 
 func (s *R2ObjectStore) Get(ctx context.Context, key string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.objectURL(key), nil)
-	if err != nil {
-		return nil, err
-	}
-	s.sign(req, nil)
-	res, err := s.client.Do(req)
+	res, err := s.doResponse(ctx, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.objectURL(key), nil)
+		if err != nil {
+			return nil, err
+		}
+		s.sign(req, nil)
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
+	return io.ReadAll(res.Body)
+}
+
+func (s *R2ObjectStore) do(ctx context.Context, build func() (*http.Request, error)) error {
+	res, err := s.doResponse(ctx, build)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("r2 get failed: %s: %s", res.Status, strings.TrimSpace(string(body)))
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+	return nil
+}
+
+func (s *R2ObjectStore) doResponse(ctx context.Context, build func() (*http.Request, error)) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		req, err := build()
+		if err != nil {
+			return nil, err
+		}
+		res, err := s.client.Do(req)
+		if err == nil && res.StatusCode >= 200 && res.StatusCode < 300 {
+			return res, nil
+		}
+		if err == nil {
+			message, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+			res.Body.Close()
+			lastErr = fmt.Errorf("r2 request failed: %s: %s", res.Status, strings.TrimSpace(string(message)))
+			if !retryableStatus(res.StatusCode) {
+				return nil, lastErr
+			}
+		} else {
+			lastErr = err
+		}
+		timer := time.NewTimer(time.Duration(150*(1<<attempt)) * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
-	return body, nil
+	return nil, lastErr
+}
+
+func retryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusRequestTimeout || status >= 500
 }
 
 func (s *R2ObjectStore) objectURL(key string) string {
