@@ -485,7 +485,7 @@ func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (auth.User,
 }
 
 func (s *Server) basicUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
-	if !s.allowAuthAttempt(w, r, "git-basic", 30, time.Minute) {
+	if !s.allowAuthAttempt(w, r, "git-basic", 120, time.Minute) {
 		return auth.User{}, false
 	}
 	username, password, ok := r.BasicAuth()
@@ -603,6 +603,10 @@ func (s *Server) observe(next http.Handler) http.Handler {
 }
 
 func (s *Server) metricsHandler(w http.ResponseWriter, _ *http.Request) {
+	if os.Getenv("GITDADDY_PUBLIC_METRICS") != "true" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	fmt.Fprintf(w, "gitdaddy_http_requests_total %d\n", atomic.LoadUint64(&s.metrics.requests))
 	fmt.Fprintf(w, "gitdaddy_http_errors_total %d\n", atomic.LoadUint64(&s.metrics.errors))
@@ -670,8 +674,13 @@ func (s *Server) allowAuthAttempt(w http.ResponseWriter, r *http.Request, scope 
 }
 
 func clientIP(r *http.Request) string {
-	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
-		return forwarded
+	if os.Getenv("GITDADDY_TRUST_PROXY_HEADERS") == "true" {
+		if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
+			return forwarded
+		}
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); os.Getenv("GITDADDY_TRUST_PROXY_HEADERS") == "true" && realIP != "" {
+		return realIP
 	}
 	host := r.RemoteAddr
 	if idx := strings.LastIndex(host, ":"); idx > -1 {

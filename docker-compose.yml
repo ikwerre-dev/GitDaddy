@@ -33,10 +33,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["gitdaddy-backend"]
-    env_file:
-      - path: .env
-        required: false
+    command: ["sh", "-c", "set -a; . /run/secrets/gitdaddy_env 2>/dev/null || true; set +a; exec gitdaddy-backend"]
     environment:
       GITDADDY_ADDR: ":8080"
       GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
@@ -49,6 +46,7 @@ services:
     volumes:
       - repo-cache:/var/lib/gitdaddy/repos
       - object-cache:/var/lib/gitdaddy/objects
+      - ./.env:/run/secrets/gitdaddy_env:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,10 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["gitdaddy-worker"]
-    env_file:
-      - path: .env
-        required: false
+    command: ["sh", "-c", "set -a; . /run/secrets/gitdaddy_env 2>/dev/null || true; set +a; exec gitdaddy-worker"]
     environment:
       GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
       GITDADDY_OBJECT_ROOT: /var/lib/gitdaddy/objects
@@ -72,6 +67,7 @@ services:
     volumes:
       - repo-cache:/var/lib/gitdaddy/repos
       - object-cache:/var/lib/gitdaddy/objects
+      - ./.env:/run/secrets/gitdaddy_env:ro
     depends_on:
       go-backend:
         condition: service_started

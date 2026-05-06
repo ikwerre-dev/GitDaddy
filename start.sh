@@ -10,6 +10,13 @@ need() {
 
 need docker
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 docker compose up -d --build
 
 echo "waiting for API..."

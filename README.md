@@ -1,25 +1,55 @@
 # GitDaddy
 
-GitDaddy is an open-source distributed Git hosting platform built with Go, PostgreSQL, Redis, Cloudflare R2-compatible object storage, and a Next.js web UI.
+GitDaddy is an open-source, self-hostable GitHub alternative built with Go, PostgreSQL, Redis, Cloudflare R2-compatible object storage, and a Next.js web UI.
 
-## What It Can Do
+Built by [Robinson Honour](https://robinsonhonour.me).
 
-- Register users, log in, log out, and resolve the current account with bearer tokens.
-- Create private or public repositories.
-- Change repository visibility.
-- Delete repositories and their local bare Git data.
-- Serve Git smart HTTP endpoints for `git clone`, `git fetch`, `git pull`, and `git push`.
-- Authenticate normal Git clients with HTTP Basic auth.
-- Create personal access tokens for Git over HTTPS.
-- Grant collaborators `read`, `write`, or `admin` access.
-- Queue asynchronous repository snapshot sync jobs after push operations.
-- Browse repositories through REST APIs and the Next.js UI.
-- List branches and recent commits.
-- Browse repository trees and preview text file contents.
-- View commit diffs with patch and stat output.
-- Report repository stats including branch count, commit count, object count, size, and HEAD.
-- Report platform stats for the signed-in user, including repository count and pending async jobs.
-- Run locally with Docker Compose.
+## Technical Capabilities
+
+GitDaddy speaks normal Git over HTTP. You do not need a custom CLI.
+
+Supported Git operations:
+
+```bash
+git clone http://localhost:8080/git/<owner>/<repo>.git
+git remote add origin http://localhost:8080/git/<owner>/<repo>.git
+git fetch origin
+git pull origin main
+git push origin main
+git push origin <branch>
+git ls-remote http://localhost:8080/git/<owner>/<repo>.git
+```
+
+Repository and auth features:
+
+- Smart HTTP transport through `git http-backend`.
+- Public repositories can be cloned/fetched without credentials.
+- Private repositories require GitDaddy credentials or a personal access token.
+- Pushes require `write` or `admin` access.
+- Repository owners have implicit `admin`.
+- Collaborator roles: `read`, `write`, `admin`.
+- Personal access tokens use the `gtd_...` prefix and work with normal Git credential prompts.
+- REST APIs expose repository creation, visibility changes, deletion, collaborators, branches, commits, file previews, diffs, stats, and token management.
+
+Storage and worker behavior:
+
+- Push requests finish after local Git receive-pack succeeds.
+- R2 upload is queued asynchronously, so object storage is not in the push critical path.
+- Repository snapshots default to LZ4-compressed tar files: `.tar.lz4`.
+- `GITDADDY_SNAPSHOT_COMPRESSION` supports `lz4`, `gzip`, and `none`.
+- R2 uploads include snapshot SHA-256 and byte-length metadata.
+- R2 upload/download smoke testing is included in `./test.sh`.
+
+Security-relevant defaults:
+
+- Bcrypt password hashing.
+- Personal access tokens for Git over HTTPS.
+- JSON body size limit and unknown-field rejection.
+- Restricted CORS through `GITDADDY_ALLOWED_ORIGINS`.
+- Security headers on API responses.
+- Login/register/Git auth rate limiting.
+- Git path traversal checks before invoking `git http-backend`.
+- `/metrics` is private unless `GITDADDY_PUBLIC_METRICS=true`.
 
 ## Run Locally
 
@@ -34,6 +64,8 @@ Services:
 
 ## Git Usage
 
+Create or log into a GitDaddy account from the web UI, create a repository, then use the normal Git CLI:
+
 ```bash
 git clone http://localhost:8080/git/<owner>/<repo>.git
 cd <repo>
@@ -41,14 +73,88 @@ git pull
 git push origin main
 ```
 
-For private repositories and pushes, normal Git prompts for your GitDaddy username and password. You can also use standard Git credential helpers.
+For private repositories and pushes, Git prompts for a username and password. Use either your account password or a personal access token. Personal access tokens are recommended.
 
-Additional API examples:
+Example with a personal access token:
+
+```bash
+git clone http://localhost:8080/git/robinson/demo.git
+# Username: robinson
+# Password: gtd_<token>
+```
+
+Add a new local project to GitDaddy:
+
+```bash
+git init -b main
+git add .
+git commit -m "initial commit"
+git remote add origin http://localhost:8080/git/<owner>/<repo>.git
+git push -u origin main
+```
+
+Work with branches:
+
+```bash
+git checkout -b feature/api
+git push -u origin feature/api
+git fetch origin
+git pull origin main
+```
+
+Inspect a remote:
+
+```bash
+git ls-remote http://localhost:8080/git/<owner>/<repo>.git
+git remote -v
+```
+
+Standard Git credential helpers work:
+
+```bash
+git config --global credential.helper store
+git config --global credential.helper cache
+```
+
+## REST API Examples
+
+Register and log in:
+
+```bash
+curl -X POST http://localhost:8080/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"robinson","email":"me@example.com","password":"secret"}'
+
+curl -X POST http://localhost:8080/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"robinson","password":"secret"}'
+```
+
+Create a repository:
+
+```bash
+curl -X POST http://localhost:8080/api/repos \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"demo","visibility":"private"}'
+```
+
+Create a personal access token:
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"name":"laptop"}' http://localhost:8080/api/tokens
+```
+
+Grant collaborator access:
+
+```bash
+curl -X PUT -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"role":"write"}' http://localhost:8080/api/repos/<owner>/<repo>/collaborators/<username>
+```
+
+Browse repository data:
 
 ```bash
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/stats
-curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"name":"laptop"}' http://localhost:8080/api/tokens
-curl -X PUT -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"role":"write"}' http://localhost:8080/api/repos/<owner>/<repo>/collaborators/<username>
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/repos/<owner>/<repo>/branches
 curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/repos/<owner>/<repo>/file?ref=HEAD&path=README.md"
 curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/repos/<owner>/<repo>/diff?commit=HEAD"

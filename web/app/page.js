@@ -333,46 +333,137 @@ export default function Home() {
 
 function AuthScreen({ busy, message, onSubmit }) {
   const [mode, setMode] = useState("login");
+  const cloneCommand = "git clone http://localhost:8080/git/robinson/api.git";
+  const pushCommand = "git push origin main";
   return (
-    <main className="authShell">
-      <section className="authPanel">
-        <div className="brand large">
-          <div className="mark">
-            <Code2 size={24} />
+    <main className="landingShell">
+      <div className="landingRail left" aria-hidden="true" />
+      <div className="landingRail right" aria-hidden="true" />
+      <section className="landingFrame">
+        <header className="landingHero">
+          <nav className="landingNav">
+            <div className="landingBrand">
+              <span className="landingMark">
+                <Code2 size={22} />
+              </span>
+              <span>GitDaddy</span>
+            </div>
+            <div className="landingMeta">
+              <span>self-hosted</span>
+              <span>R2-backed</span>
+              <span>normal Git CLI</span>
+            </div>
+          </nav>
+
+          <div className="landingTitle">
+            <p>Open-source GitHub alternative</p>
+            <h1>GitDaddy</h1>
           </div>
+        </header>
+
+        <div className="landingCommandBar">
           <div>
-            <strong>GitDaddy</strong>
-            <span>Open-source Git hosting</span>
+            <Terminal size={19} />
+            <span>{cloneCommand}</span>
           </div>
-        </div>
-        <div>
-          <h1>Ship code from your own cloud.</h1>
-          <p>Run Git repositories, browser views, normal Git command workflows, and async object storage sync from one open platform.</p>
-        </div>
-        <form
-          className="authForm"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit(Object.fromEntries(new FormData(event.currentTarget)), mode);
-          }}
-        >
-          <input name="username" placeholder="Username" required />
-          {mode === "register" ? <input name="email" placeholder="Email" /> : null}
-          <input name="password" placeholder="Password" type="password" required />
-          <div className="segmented">
-            <button type="button" className={mode === "login" ? "selected" : ""} onClick={() => setMode("login")}>
-              Login
-            </button>
-            <button type="button" className={mode === "register" ? "selected" : ""} onClick={() => setMode("register")}>
-              Sign up
-            </button>
-          </div>
-          <button className="primary" disabled={busy} type="submit">
-            <KeyRound size={18} />
-            {mode === "login" ? "Login" : "Create account"}
+          <button type="button" title="Copy clone command" onClick={() => navigator.clipboard?.writeText(cloneCommand)}>
+            <Copy size={18} />
           </button>
-        </form>
-        {message ? <p className="message">{message}</p> : null}
+        </div>
+
+        <div className="landingGrid">
+          <article className="landingPitch">
+            <span className="landingNumber">01</span>
+            <h2>Host repos like GitHub, run them from your own stack.</h2>
+            <p>
+              GitDaddy serves clone, fetch, pull, and push over normal Git smart HTTP while the backend handles auth,
+              repository metadata, branch views, commit history, diffs, and async R2 snapshots.
+            </p>
+          </article>
+
+          <div className="landingPattern" aria-hidden="true" />
+
+          <form
+            className="landingAuth authForm"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit(Object.fromEntries(new FormData(event.currentTarget)), mode);
+            }}
+          >
+            <div>
+              <span className="landingNumber">access</span>
+              <h2>{mode === "login" ? "Enter your GitDaddy workspace." : "Create your GitDaddy account."}</h2>
+            </div>
+            <input name="username" placeholder="Username" required />
+            {mode === "register" ? <input name="email" placeholder="Email" /> : null}
+            <input name="password" placeholder="Password" type="password" required />
+            <div className="segmented">
+              <button type="button" className={mode === "login" ? "selected" : ""} onClick={() => setMode("login")}>
+                Login
+              </button>
+              <button type="button" className={mode === "register" ? "selected" : ""} onClick={() => setMode("register")}>
+                Sign up
+              </button>
+            </div>
+            <button className="primary" disabled={busy} type="submit">
+              <KeyRound size={18} />
+              {mode === "login" ? "Login" : "Create account"}
+            </button>
+            {message ? <p className="message">{message}</p> : null}
+          </form>
+
+          <article className="landingCode">
+            <div className="landingCodeHead">
+              <div>
+                <span className="landingNumber">git</span>
+                <h2>Use the Git commands you already know.</h2>
+              </div>
+              <button type="button" title="Copy push command" onClick={() => navigator.clipboard?.writeText(pushCommand)}>
+                <Copy size={18} />
+              </button>
+            </div>
+            <pre>
+              <code>{`git remote add origin http://localhost:8080/git/robinson/api.git
+git fetch origin
+git pull origin main
+git push origin main`}</code>
+            </pre>
+          </article>
+
+          <article className="landingStack">
+            <span className="landingNumber">02</span>
+            <h2>Production pieces, open-source shape.</h2>
+            <div className="landingStackList">
+              <span>
+                <GitBranch size={18} /> Smart HTTP Git protocol
+              </span>
+              <span>
+                <ShieldCheck size={18} /> Token auth and repo permissions
+              </span>
+              <span>
+                <Box size={18} /> PostgreSQL, Redis, R2 snapshots
+              </span>
+              <span>
+                <Activity size={18} /> Worker sync outside request path
+              </span>
+            </div>
+          </article>
+
+          <article className="landingStats">
+            <div>
+              <strong>clone</strong>
+              <span>Serve repos from local cache or restore from R2.</span>
+            </div>
+            <div>
+              <strong>push</strong>
+              <span>Accept writes fast, queue compressed snapshots async.</span>
+            </div>
+            <div>
+              <strong>browse</strong>
+              <span>View files, commits, branches, diffs, and settings.</span>
+            </div>
+          </article>
+        </div>
       </section>
     </main>
   );

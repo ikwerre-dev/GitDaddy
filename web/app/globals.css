@@ -411,39 +411,351 @@ code {
   padding: 14px;
 }
 
-.authShell {
-  align-items: center;
-  display: grid;
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.authPanel {
-  background: #fff;
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  display: grid;
-  gap: 24px;
-  margin: 0 auto;
-  max-width: 520px;
-  padding: 30px;
-  width: 100%;
-}
-
-.authPanel h1 {
-  font-size: 34px;
-  margin-bottom: 10px;
-}
-
-.authPanel p {
-  color: var(--muted);
-  line-height: 1.5;
-  margin: 0;
-}
-
 .authForm {
   display: grid;
   gap: 12px;
+}
+
+.landingShell {
+  background:
+    linear-gradient(#070707 0 0) padding-box,
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 96px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 96px);
+  color: #ededed;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 42px 74px;
+  position: relative;
+}
+
+.landingRail {
+  border-left: 2px dotted rgba(255, 255, 255, 0.82);
+  bottom: 42px;
+  position: fixed;
+  top: 42px;
+  width: 1px;
+}
+
+.landingRail::before,
+.landingRail::after {
+  background: #ededed;
+  content: "";
+  height: 1px;
+  left: -32px;
+  position: absolute;
+  width: 64px;
+}
+
+.landingRail::before {
+  top: 14%;
+}
+
+.landingRail::after {
+  bottom: 14%;
+}
+
+.landingRail.left {
+  left: 38px;
+}
+
+.landingRail.right {
+  right: 38px;
+}
+
+.landingFrame {
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  margin: 0 auto;
+  max-width: 1420px;
+  min-height: calc(100vh - 84px);
+}
+
+.landingHero {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.86);
+  display: grid;
+  min-height: 360px;
+}
+
+.landingNav {
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 0 26px;
+}
+
+.landingBrand,
+.landingMeta,
+.landingCommandBar,
+.landingCommandBar div,
+.landingStackList span,
+.landingCodeHead {
+  align-items: center;
+  display: flex;
+}
+
+.landingBrand {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+  gap: 12px;
+}
+
+.landingMark {
+  align-items: center;
+  background: #ededed;
+  color: #050505;
+  display: grid;
+  height: 38px;
+  justify-items: center;
+  width: 38px;
+}
+
+.landingMeta {
+  color: #b8b8b8;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 18px;
+  text-transform: uppercase;
+}
+
+.landingMeta span {
+  border-left: 1px solid rgba(255, 255, 255, 0.34);
+  padding-left: 18px;
+}
+
+.landingTitle {
+  align-self: center;
+  justify-self: center;
+  padding: 56px 24px 64px;
+  text-align: center;
+}
+
+.landingTitle p,
+.landingNumber {
+  color: #a5a5a5;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.landingTitle h1 {
+  color: #d8d8d8;
+  font-size: 150px;
+  font-weight: 950;
+  line-height: 0.88;
+  margin-top: 14px;
+}
+
+.landingCommandBar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.86);
+  justify-content: space-between;
+  min-height: 72px;
+}
+
+.landingCommandBar div {
+  color: #d8d8d8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 15px;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 24px;
+}
+
+.landingCommandBar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landingCommandBar button,
+.landingCodeHead button {
+  background: #101010;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  color: #ededed;
+  display: grid;
+  height: 42px;
+  justify-items: center;
+  margin-right: 18px;
+  width: 42px;
+}
+
+.landingGrid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.54fr 0.86fr;
+}
+
+.landingPitch,
+.landingAuth,
+.landingCode,
+.landingStack,
+.landingStats,
+.landingPattern {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.86);
+  min-width: 0;
+}
+
+.landingPitch,
+.landingAuth,
+.landingCode,
+.landingStack,
+.landingStats {
+  display: grid;
+  gap: 22px;
+  padding: 36px;
+}
+
+.landingPitch {
+  border-right: 1px solid rgba(255, 255, 255, 0.86);
+  min-height: 306px;
+}
+
+.landingPitch h2,
+.landingAuth h2,
+.landingCode h2,
+.landingStack h2 {
+  color: #ededed;
+  font-size: 42px;
+  font-weight: 950;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.landingPitch p {
+  color: #b8b8b8;
+  font-size: 17px;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 760px;
+}
+
+.landingPattern {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.24) 0 1px, transparent 1px 12px),
+    #0c0c0c;
+  border-right: 1px solid rgba(255, 255, 255, 0.86);
+  min-height: 306px;
+}
+
+.landingAuth {
+  background: #111;
+}
+
+.landingAuth input {
+  background: #080808;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 0;
+  color: #ededed;
+  min-height: 48px;
+}
+
+.landingAuth input::placeholder {
+  color: #858585;
+}
+
+.landingAuth .segmented {
+  background: #070707;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0;
+  padding: 4px;
+}
+
+.landingAuth .segmented button {
+  border-radius: 0;
+  color: #b8b8b8;
+  font-weight: 900;
+}
+
+.landingAuth .segmented button.selected {
+  background: #ededed;
+  color: #050505;
+}
+
+.landingAuth .primary {
+  background: #ededed;
+  border-color: #ededed;
+  border-radius: 0;
+  color: #050505;
+  min-height: 48px;
+}
+
+.landingAuth .message {
+  background: #201b0a;
+  border-color: #75621d;
+  border-radius: 0;
+  color: #f3de86;
+  margin: 0;
+}
+
+.landingCode {
+  border-right: 1px solid rgba(255, 255, 255, 0.86);
+  grid-column: span 2;
+}
+
+.landingCodeHead {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.landingCode pre {
+  background: #050505;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #e5e5e5;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 15px;
+  line-height: 1.75;
+  margin: 0;
+  overflow: auto;
+  padding: 22px;
+}
+
+.landingCode code {
+  background: transparent;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+}
+
+.landingStackList {
+  display: grid;
+  gap: 16px;
+}
+
+.landingStackList span {
+  color: #cfcfcf;
+  font-weight: 800;
+  gap: 10px;
+}
+
+.landingStats {
+  grid-column: span 3;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+}
+
+.landingStats div {
+  display: grid;
+  gap: 9px;
+  min-height: 118px;
+  padding: 26px;
+}
+
+.landingStats div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.86);
+}
+
+.landingStats strong {
+  color: #ededed;
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.landingStats span {
+  color: #a8a8a8;
+  line-height: 1.45;
 }
 
 .segmented {
@@ -481,6 +793,51 @@ code {
   .settingsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .landingShell {
+    padding: 22px;
+  }
+
+  .landingRail {
+    display: none;
+  }
+
+  .landingFrame {
+    min-height: calc(100vh - 44px);
+  }
+
+  .landingHero {
+    min-height: 280px;
+  }
+
+  .landingMeta {
+    display: none;
+  }
+
+  .landingTitle h1 {
+    font-size: 88px;
+  }
+
+  .landingGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .landingAuth {
+    grid-column: span 2;
+  }
+
+  .landingCode,
+  .landingStack,
+  .landingStats {
+    grid-column: span 2;
+  }
+
+  .landingPitch h2,
+  .landingAuth h2,
+  .landingCode h2,
+  .landingStack h2 {
+    font-size: 34px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -504,5 +861,86 @@ code {
 
   .tabs {
     overflow-x: auto;
+  }
+
+  .landingShell {
+    padding: 12px;
+  }
+
+  .landingFrame {
+    min-height: calc(100vh - 24px);
+  }
+
+  .landingHero {
+    min-height: 230px;
+  }
+
+  .landingNav,
+  .landingCommandBar {
+    min-height: 62px;
+  }
+
+  .landingTitle {
+    padding: 36px 16px 44px;
+  }
+
+  .landingTitle h1 {
+    font-size: 58px;
+  }
+
+  .landingCommandBar div {
+    font-size: 12px;
+    padding: 0 14px;
+  }
+
+  .landingCommandBar button,
+  .landingCodeHead button {
+    height: 36px;
+    margin-right: 12px;
+    min-width: 36px;
+    width: 36px;
+  }
+
+  .landingGrid,
+  .landingStats {
+    grid-template-columns: 1fr;
+  }
+
+  .landingPitch,
+  .landingPattern,
+  .landingAuth,
+  .landingCode,
+  .landingStack,
+  .landingStats {
+    grid-column: span 1;
+  }
+
+  .landingPitch,
+  .landingPattern,
+  .landingCode {
+    border-right: 0;
+  }
+
+  .landingPitch,
+  .landingAuth,
+  .landingCode,
+  .landingStack {
+    padding: 24px;
+  }
+
+  .landingPitch h2,
+  .landingAuth h2,
+  .landingCode h2,
+  .landingStack h2 {
+    font-size: 28px;
+  }
+
+  .landingPattern {
+    min-height: 130px;
+  }
+
+  .landingStats div + div {
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.86);
   }
 }
