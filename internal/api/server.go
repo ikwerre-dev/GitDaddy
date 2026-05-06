@@ -557,8 +557,8 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 type metrics struct {
-	requests uint64
-	errors   uint64
+	requests    uint64
+	errors      uint64
 	gitRequests uint64
 }
 

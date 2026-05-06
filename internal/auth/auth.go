@@ -200,11 +200,11 @@ func randomToken() string {
 }
 
 type MemoryTokenStore struct {
-	mu      sync.RWMutex
-	nextID  int64
-	tokens  map[int64]PersonalAccessToken
-	byHash  map[string]int64
-	hashes  map[int64]string
+	mu     sync.RWMutex
+	nextID int64
+	tokens map[int64]PersonalAccessToken
+	byHash map[string]int64
+	hashes map[int64]string
 }
 
 func NewMemoryTokenStore() *MemoryTokenStore {
