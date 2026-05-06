@@ -6,9 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
@@ -30,13 +33,34 @@ type SessionStore interface {
 	Delete(context.Context, string) error
 }
 
+type PersonalAccessToken struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Name      string    `json:"name"`
+	Prefix    string    `json:"prefix"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type TokenStore interface {
+	Create(context.Context, PersonalAccessToken, string) (PersonalAccessToken, error)
+	ListByUser(context.Context, int64) ([]PersonalAccessToken, error)
+	FindByPlaintext(context.Context, string) (PersonalAccessToken, error)
+	Delete(context.Context, int64, int64) error
+}
+
 type Service struct {
-	users    UserStore
-	sessions SessionStore
+	users     UserStore
+	sessions  SessionStore
+	apiTokens TokenStore
 }
 
 func NewService(users UserStore, sessions SessionStore) *Service {
-	return &Service{users: users, sessions: sessions}
+	return &Service{users: users, sessions: sessions, apiTokens: NewMemoryTokenStore()}
+}
+
+func NewServiceWithTokens(users UserStore, sessions SessionStore, apiTokens TokenStore) *Service {
+	return &Service{users: users, sessions: sessions, apiTokens: apiTokens}
 }
 
 func (s *Service) Register(ctx context.Context, username, email, password string) (User, error) {
@@ -69,10 +93,28 @@ func (s *Service) AuthenticatePassword(ctx context.Context, username, password s
 	if err != nil {
 		return User{}, errors.New("invalid credentials")
 	}
-	if user.PasswordHash != HashPassword(password) {
+	if !VerifyPassword(user.PasswordHash, password) {
 		return User{}, errors.New("invalid credentials")
 	}
 	return user, nil
+}
+
+func (s *Service) AuthenticateGit(ctx context.Context, username, secret string) (User, error) {
+	if strings.HasPrefix(secret, "gtd_") {
+		token, err := s.apiTokens.FindByPlaintext(ctx, secret)
+		if err != nil || time.Now().After(token.ExpiresAt) {
+			return User{}, errors.New("invalid credentials")
+		}
+		user, err := s.findByID(ctx, token.UserID)
+		if err != nil {
+			return User{}, errors.New("invalid credentials")
+		}
+		if username != "" && !strings.EqualFold(username, user.Username) {
+			return User{}, errors.New("invalid credentials")
+		}
+		return user, nil
+	}
+	return s.AuthenticatePassword(ctx, username, secret)
 }
 
 func (s *Service) CurrentUser(ctx context.Context, token string) (User, error) {
@@ -91,6 +133,33 @@ func (s *Service) FindByUsername(ctx context.Context, username string) (User, er
 	return s.users.FindByUsername(ctx, strings.TrimSpace(strings.ToLower(username)))
 }
 
+func (s *Service) CreateToken(ctx context.Context, userID int64, name string, ttl time.Duration) (PersonalAccessToken, string, error) {
+	if strings.TrimSpace(name) == "" {
+		return PersonalAccessToken{}, "", errors.New("token name is required")
+	}
+	if ttl <= 0 {
+		ttl = 90 * 24 * time.Hour
+	}
+	plaintext := "gtd_" + randomToken()
+	token := PersonalAccessToken{
+		UserID:    userID,
+		Name:      strings.TrimSpace(name),
+		Prefix:    plaintext[:12],
+		CreatedAt: time.Now().UTC(),
+		ExpiresAt: time.Now().UTC().Add(ttl),
+	}
+	created, err := s.apiTokens.Create(ctx, token, HashSecret(plaintext))
+	return created, plaintext, err
+}
+
+func (s *Service) ListTokens(ctx context.Context, userID int64) ([]PersonalAccessToken, error) {
+	return s.apiTokens.ListByUser(ctx, userID)
+}
+
+func (s *Service) DeleteToken(ctx context.Context, userID, tokenID int64) error {
+	return s.apiTokens.Delete(ctx, userID, tokenID)
+}
+
 func (s *Service) findByID(ctx context.Context, id int64) (User, error) {
 	if mem, ok := s.users.(*MemoryUserStore); ok {
 		return mem.FindByID(ctx, id)
@@ -99,7 +168,26 @@ func (s *Service) findByID(ctx context.Context, id int64) (User, error) {
 }
 
 func HashPassword(password string) string {
-	sum := sha256.Sum256([]byte("gitdaddy:" + password))
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return string(hash)
+}
+
+func VerifyPassword(hash, password string) bool {
+	if strings.HasPrefix(hash, "$2a$") || strings.HasPrefix(hash, "$2b$") || strings.HasPrefix(hash, "$2y$") {
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+	}
+	return hash == legacySHA256(password)
+}
+
+func HashSecret(secret string) string {
+	return legacySHA256(secret)
+}
+
+func legacySHA256(value string) string {
+	sum := sha256.Sum256([]byte("gitdaddy:" + value))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -109,6 +197,70 @@ func randomToken() string {
 		panic(err)
 	}
 	return hex.EncodeToString(bytes)
+}
+
+type MemoryTokenStore struct {
+	mu      sync.RWMutex
+	nextID  int64
+	tokens  map[int64]PersonalAccessToken
+	byHash  map[string]int64
+	hashes  map[int64]string
+}
+
+func NewMemoryTokenStore() *MemoryTokenStore {
+	return &MemoryTokenStore{
+		nextID: 1,
+		tokens: map[int64]PersonalAccessToken{},
+		byHash: map[string]int64{},
+		hashes: map[int64]string{},
+	}
+}
+
+func (s *MemoryTokenStore) Create(_ context.Context, token PersonalAccessToken, hash string) (PersonalAccessToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token.ID = s.nextID
+	s.nextID++
+	s.tokens[token.ID] = token
+	s.byHash[hash] = token.ID
+	s.hashes[token.ID] = hash
+	return token, nil
+}
+
+func (s *MemoryTokenStore) ListByUser(_ context.Context, userID int64) ([]PersonalAccessToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tokens := []PersonalAccessToken{}
+	for _, token := range s.tokens {
+		if token.UserID == userID {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
+}
+
+func (s *MemoryTokenStore) FindByPlaintext(_ context.Context, plaintext string) (PersonalAccessToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	id, ok := s.byHash[HashSecret(plaintext)]
+	if !ok {
+		return PersonalAccessToken{}, errors.New("token not found")
+	}
+	token := s.tokens[id]
+	return token, nil
+}
+
+func (s *MemoryTokenStore) Delete(_ context.Context, userID, tokenID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token, ok := s.tokens[tokenID]
+	if !ok || token.UserID != userID {
+		return fmt.Errorf("token not found")
+	}
+	delete(s.tokens, tokenID)
+	delete(s.byHash, s.hashes[tokenID])
+	delete(s.hashes, tokenID)
+	return nil
 }
 
 type MemoryUserStore struct {
