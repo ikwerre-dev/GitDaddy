@@ -43,15 +43,15 @@ type Permission struct {
 }
 
 type PullRequest struct {
-	ID         int64     `json:"id"`
-	RepoID     int64     `json:"repo_id"`
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	Source     string    `json:"source"`
-	Target     string    `json:"target"`
-	Status     string    `json:"status"`
-	AuthorID   int64     `json:"author_id"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        int64     `json:"id"`
+	RepoID    int64     `json:"repo_id"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	Source    string    `json:"source"`
+	Target    string    `json:"target"`
+	Status    string    `json:"status"`
+	AuthorID  int64     `json:"author_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type PermissionStore interface {

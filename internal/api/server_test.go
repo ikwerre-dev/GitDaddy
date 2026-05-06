@@ -113,6 +113,18 @@ func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	remote := strings.Replace(ts.URL, "http://", "http://alice:"+secret+"@", 1) + "/git/alice/demo.git"
 	run(t, source, "git", "remote", "add", "origin", remote)
 	run(t, source, "git", "push", "origin", "main")
+	branch := post(t, ts.URL+"/api/repos/alice/demo/branches", token, map[string]string{"name": "feature/cache", "from": "main"}, http.StatusCreated)
+	if branch["name"] != "feature/cache" {
+		t.Fatalf("unexpected branch response: %+v", branch)
+	}
+	pull := post(t, ts.URL+"/api/repos/alice/demo/pulls", token, map[string]string{"title": "Add cache work", "source": "feature/cache", "target": "main"}, http.StatusCreated)
+	if pull["status"] != "open" {
+		t.Fatalf("unexpected pull response: %+v", pull)
+	}
+	pulls := getArray(t, ts.URL+"/api/repos/alice/demo/pulls", token, http.StatusOK)
+	if len(pulls) == 0 {
+		t.Fatalf("expected pull request list response")
+	}
 
 	if jobs.Len() != 1 {
 		t.Fatalf("expected one sync job after git push, got %d", jobs.Len())
@@ -148,6 +160,11 @@ func get(t *testing.T, url, token string, status int) map[string]any {
 	return requestJSON(t, http.MethodGet, url, token, nil, status)
 }
 
+func getArray(t *testing.T, url, token string, status int) []any {
+	t.Helper()
+	return requestJSONArray(t, http.MethodGet, url, token, nil, status)
+}
+
 func requestJSON(t *testing.T, method, url, token string, body any, status int) map[string]any {
 	t.Helper()
 	payload, err := json.Marshal(body)
@@ -172,6 +189,39 @@ func requestJSON(t *testing.T, method, url, token string, body any, status int) 
 	}
 	defer res.Body.Close()
 	var decoded map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != status {
+		t.Fatalf("expected %d got %d: %+v", status, res.StatusCode, decoded)
+	}
+	return decoded
+}
+
+func requestJSONArray(t *testing.T, method, url, token string, body any, status int) []any {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, url, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var decoded []any
 	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
 		t.Fatal(err)
 	}
