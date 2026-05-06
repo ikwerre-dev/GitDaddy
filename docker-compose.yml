@@ -1,0 +1,97 @@
+name: gitdaddy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gitdaddy}
+      POSTGRES_USER: ${POSTGRES_USER:-gitdaddy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gitdaddy}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  go-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["gitdaddy-backend"]
+    environment:
+      GITDADDY_ADDR: ":8080"
+      GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
+      GITDADDY_OBJECT_ROOT: /var/lib/gitdaddy/objects
+      DATABASE_URL: postgres://gitdaddy:gitdaddy@postgres:5432/gitdaddy?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-gitdaddy-dev}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - repo-cache:/var/lib/gitdaddy/repos
+      - object-cache:/var/lib/gitdaddy/objects
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["gitdaddy-worker"]
+    environment:
+      GITDADDY_REPO_ROOT: /var/lib/gitdaddy/repos
+      GITDADDY_OBJECT_ROOT: /var/lib/gitdaddy/objects
+      DATABASE_URL: postgres://gitdaddy:gitdaddy@postgres:5432/gitdaddy?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-gitdaddy-dev}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes:
+      - repo-cache:/var/lib/gitdaddy/repos
+      - object-cache:/var/lib/gitdaddy/objects
+    depends_on:
+      go-backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  frontend-ui:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_GITDADDY_API_URL: http://localhost:${API_PORT:-8080}
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      go-backend:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  repo-cache:
+  object-cache:
