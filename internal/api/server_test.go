@@ -106,6 +106,37 @@ func TestGitPathPartsAcceptsBrowserRepoURLs(t *testing.T) {
 	}
 }
 
+func TestGitBaseURLDoesNotRenderWebUI(t *testing.T) {
+	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
+	repoSvc := repo.NewService(repo.NewMemoryStore())
+	server := NewServer(authSvc, repoSvc, git.NewService(t.TempDir()), storage.NewLocalObjectStore(t.TempDir()), queue.NewMemoryQueue())
+	ts := httptest.NewServer(server.Routes())
+	defer ts.Close()
+
+	post(t, ts.URL+"/api/register", "", map[string]string{"username": "alice", "email": "a@example.com", "password": "secret"}, http.StatusCreated)
+	login := post(t, ts.URL+"/api/login", "", map[string]string{"username": "alice", "password": "secret"}, http.StatusOK)
+	token := login["token"].(string)
+	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/git/alice/demo.git", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth("alice", "secret")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Header.Get("Content-Type"), "text/html") || strings.Contains(string(body), "<!doctype html>") {
+		t.Fatalf("git base URL rendered web UI: status=%d content-type=%q body=%q", res.StatusCode, res.Header.Get("Content-Type"), body)
+	}
+}
+
 func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
 	repoSvc := repo.NewService(repo.NewMemoryStore())

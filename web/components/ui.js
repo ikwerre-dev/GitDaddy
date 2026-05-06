@@ -2,14 +2,14 @@
 
 export function Button({ children, variant = "default", className = "", ...props }) {
   const variants = {
-    default: "border-[#d0d7de] bg-[#f6f8fa] text-[#24292f] hover:bg-[#f3f4f6]",
-    primary: "border-[#1f883d] bg-[#1f883d] text-white hover:bg-[#1a7f37]",
-    dark: "border-[#24292f] bg-[#24292f] text-white hover:bg-[#1f2328]",
-    danger: "border-[#d1242f] bg-white text-[#d1242f] hover:bg-[#d1242f] hover:text-white",
+    default: "border-neutral-950 bg-white text-[#1f2328] shadow-[2px_2px_0_#1f2328] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0_#1f2328]",
+    primary: "border-neutral-950 bg-[#1f2328] text-white shadow-[2px_2px_0_#1f2328] hover:bg-neutral-800",
+    dark: "border-neutral-950 bg-[#1f2328] text-white shadow-[2px_2px_0_#1f2328] hover:bg-neutral-800",
+    danger: "border-neutral-950 bg-[#ffebe9] text-[#d1242f] shadow-[2px_2px_0_#1f2328] hover:bg-[#ffd8d3]",
   };
   return (
     <button
-      className={`inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition ${variants[variant]} ${className}`}
+      className={`inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-black transition ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -20,7 +20,7 @@ export function Button({ children, variant = "default", className = "", ...props
 export function Input({ className = "", ...props }) {
   return (
     <input
-      className={`h-9 rounded-md border border-[#d0d7de] bg-white px-3 text-sm outline-none focus:border-[#0969da] focus:ring-2 focus:ring-[#0969da]/20 ${className}`}
+      className={`h-9 rounded-md border border-neutral-950 bg-white px-3 text-sm font-semibold outline-none shadow-[2px_2px_0_#1f2328] placeholder:text-neutral-400 focus:translate-x-[1px] focus:translate-y-[1px] focus:shadow-[1px_1px_0_#1f2328] ${className}`}
       {...props}
     />
   );
@@ -29,7 +29,7 @@ export function Input({ className = "", ...props }) {
 export function Select({ className = "", children, ...props }) {
   return (
     <select
-      className={`h-9 rounded-md border border-[#d0d7de] bg-white px-3 text-sm font-medium leading-none outline-none focus:border-[#0969da] focus:ring-2 focus:ring-[#0969da]/20 ${className}`}
+      className={`h-9 rounded-md border border-neutral-950 bg-white px-3 text-sm font-black leading-none outline-none shadow-[2px_2px_0_#1f2328] focus:translate-x-[1px] focus:translate-y-[1px] focus:shadow-[1px_1px_0_#1f2328] ${className}`}
       {...props}
     >
       {children}
@@ -39,7 +39,7 @@ export function Select({ className = "", children, ...props }) {
 
 export function Panel({ children, className = "" }) {
   return (
-    <section className={`rounded-md border border-[#d0d7de] bg-white ${className}`}>
+    <section className={`rounded-2xl border border-neutral-950 bg-white shadow-[4px_4px_0_#1f2328] ${className}`}>
       {children}
     </section>
   );
@@ -48,7 +48,7 @@ export function Panel({ children, className = "" }) {
 export function Message({ children }) {
   if (!children) return null;
   return (
-    <div className="mb-4 rounded-md border border-[#0969da] bg-[#ddf4ff] px-4 py-3 text-sm text-[#0969da]">
+    <div className="mb-4 rounded-md border border-neutral-950 bg-[#ddf4ff] px-4 py-3 text-sm font-black text-[#0969da] shadow-[2px_2px_0_#1f2328]">
       {children}
     </div>
   );
