@@ -4,10 +4,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"context"
+	"time"
 
 	"github.com/gitdaddy/gitdaddy/internal/api"
 	"github.com/gitdaddy/gitdaddy/internal/auth"
 	"github.com/gitdaddy/gitdaddy/internal/git"
+	"github.com/gitdaddy/gitdaddy/internal/postgres"
 	"github.com/gitdaddy/gitdaddy/internal/queue"
 	"github.com/gitdaddy/gitdaddy/internal/repo"
 	"github.com/gitdaddy/gitdaddy/internal/storage"
@@ -18,10 +21,19 @@ func main() {
 	repoRoot := env("GITDADDY_REPO_ROOT", "/var/lib/gitdaddy/repos")
 	objectRoot := env("GITDADDY_OBJECT_ROOT", "/var/lib/gitdaddy/objects")
 
-	users := auth.NewMemoryUserStore()
-	sessions := auth.NewMemorySessionStore()
-	authn := auth.NewService(users, sessions)
+	authn := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
 	repos := repo.NewService(repo.NewMemoryStore())
+	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		pg, err := postgres.Open(ctx, databaseURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer pg.Close()
+		authn = auth.NewServiceWithTokens(pg.Users(), pg.Sessions(), pg.Tokens())
+		repos = repo.NewServiceWithStores(pg.Repos(), pg.Permissions(), pg.PullRequests())
+	}
 	gitSvc := git.NewService(repoRoot)
 	objects, objectMode, err := storage.NewFromEnv(storage.EnvConfig{
 		ObjectRoot:    objectRoot,
