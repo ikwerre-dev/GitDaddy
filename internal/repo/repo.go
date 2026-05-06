@@ -80,6 +80,10 @@ func NewServiceWithPermissions(store Store, permissions PermissionStore) *Servic
 	return &Service{store: store, permissions: permissions, pulls: NewMemoryPullRequestStore()}
 }
 
+func NewServiceWithStores(store Store, permissions PermissionStore, pulls PullRequestStore) *Service {
+	return &Service{store: store, permissions: permissions, pulls: pulls}
+}
+
 func (s *Service) Create(ctx context.Context, ownerID int64, name, visibility string) (Repository, error) {
 	name = strings.TrimSpace(name)
 	if !validRepoName.MatchString(name) {

@@ -12,7 +12,6 @@ import {
   GitBranchIcon,
   GitCommitIcon,
   GitPullRequestIcon,
-  GithubIcon,
   LockKeyIcon,
   Logout01Icon,
   RefreshIcon,
@@ -23,13 +22,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import { apiBase } from "../lib/api";
 import { Icon } from "./Icon";
-import { Button, Input, Message, Panel, Select } from "./ui";
+import { Input, Message, Panel, Select } from "./ui";
 
 export function Dashboard({ state }) {
   if (!state.user) return null;
   const selected = state.repoDetail || state.selected;
   return (
-    <main className="min-h-screen bg-[#f6f8fa] text-[#1f2328]">
+    <main className="min-h-screen bg-[#f6f8fa] font-['Space_Grotesk','Inter',ui-sans-serif,system-ui] text-[#1f2328]">
       <TopNav user={state.user} message={state.message} onLogout={state.logout} />
       <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 lg:grid-cols-[296px_1fr]">
         <Sidebar state={state} />
@@ -44,22 +43,22 @@ export function Dashboard({ state }) {
 
 function TopNav({ user, onLogout }) {
   return (
-    <header className="border-b border-neutral-300 bg-[#24292f] text-white">
+    <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex min-h-16 max-w-[1440px] items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-3">
-          <Icon icon={GithubIcon} size={28} />
+          <Icon icon={GitBranchIcon} size={28} />
           <strong className="text-lg">GitDaddy</strong>
-          <span className="hidden rounded-full border border-white/20 px-3 py-1 text-xs font-semibold text-white/70 sm:inline">GitHub alternative</span>
+          <span className="hidden rounded-full border border-neutral-300 bg-[#f6f8fa] px-3 py-1 text-xs font-semibold text-neutral-600 sm:inline">GitHub alternative</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden items-center gap-2 text-sm font-semibold text-white/80 sm:flex">
+          <span className="hidden items-center gap-2 text-sm font-semibold text-neutral-700 sm:flex">
             <Icon icon={UserIcon} size={17} />
             {user.username}
           </span>
-          <Button className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={onLogout}>
+          <button className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-black text-neutral-900 shadow-[2px_2px_0_#1f2328] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0_#1f2328]" onClick={onLogout} type="button">
             <Icon icon={Logout01Icon} size={17} />
             Logout
-          </Button>
+          </button>
         </div>
       </div>
     </header>
@@ -80,7 +79,7 @@ function Sidebar({ state }) {
         </div>
         <div className="grid gap-1">
           {state.filteredRepos.map((repo) => (
-            <button key={repo.id} className={`flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm font-semibold ${state.selected?.id === repo.id ? "bg-[#ddf4ff] text-[#0969da]" : "hover:bg-neutral-100"}`} onClick={() => state.chooseRepo(repo)}>
+            <button key={repo.id} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left text-sm font-semibold ${state.selected?.id === repo.id ? "bg-[#ddf4ff] text-[#0969da]" : "hover:bg-neutral-100"}`} onClick={() => state.chooseRepo(repo)}>
               <Icon icon={CodeFolderIcon} size={17} />
               <span className="truncate">{repo.name}</span>
               <span className="ml-auto rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] text-neutral-500">{repo.visibility}</span>
@@ -108,10 +107,10 @@ function CreateRepo({ busy, onSubmit }) {
           <option value="private">Private</option>
           <option value="public">Public</option>
         </Select>
-        <Button variant="primary" disabled={busy} type="submit">
+        <button className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1f883d] bg-[#1f883d] px-3 text-sm font-black text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy} type="submit">
           <Icon icon={Add01Icon} size={17} />
           Create
-        </Button>
+        </button>
       </form>
     </Panel>
   );
@@ -152,22 +151,43 @@ function Repository({ state, repo }) {
           <h1 className="mt-1 text-2xl font-semibold">{state.owner}/{repo.name}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => navigator.clipboard?.writeText(`git clone ${clone}`)}>
+          <button className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-black text-neutral-900 hover:bg-neutral-50" onClick={() => navigator.clipboard?.writeText(`git clone ${clone}`)} type="button">
             <Icon icon={Copy01Icon} size={17} />
             Clone
-          </Button>
-          <Button onClick={() => state.loadRepo()}>
+          </button>
+          <button className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-black text-neutral-900 hover:bg-neutral-50" onClick={() => state.loadRepo()} type="button">
             <Icon icon={RefreshIcon} size={17} />
             Refresh
-          </Button>
+          </button>
         </div>
       </div>
+      <CloneBar clone={clone} />
       <Tabs active={state.activeTab} onChange={state.setActiveTab} />
       {state.activeTab === "code" ? <CodeView state={state} clone={clone} /> : null}
       {state.activeTab === "commits" ? <CommitView state={state} /> : null}
       {state.activeTab === "branches" ? <BranchView state={state} /> : null}
       {state.activeTab === "pulls" ? <PullRequestView state={state} /> : null}
       {state.activeTab === "settings" ? <SettingsView state={state} repo={repo} clone={clone} /> : null}
+    </div>
+  );
+}
+
+function CloneBar({ clone }) {
+  const command = `git clone ${clone}`;
+  return (
+    <div className="grid gap-2 rounded-lg border border-neutral-300 bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+      <div className="min-w-0">
+        <span className="mb-1 block text-xs font-black uppercase text-neutral-500">Repository link</span>
+        <code className="block overflow-auto rounded-md bg-[#f6f8fa] px-3 py-2 text-sm text-neutral-800">{command}</code>
+      </div>
+      <button
+        className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-950 bg-[#1f2328] px-3 text-sm font-black text-white hover:bg-neutral-800"
+        onClick={() => navigator.clipboard?.writeText(command)}
+        type="button"
+      >
+        <Icon icon={Copy01Icon} size={17} />
+        Copy link
+      </button>
     </div>
   );
 }
@@ -203,7 +223,7 @@ function CodeView({ state, clone }) {
           </Select>
           <span className="text-sm text-neutral-600">{state.path || "/"} · {state.tree.length} entries</span>
         </div>
-        {state.path ? <Button onClick={state.upPath}>Up</Button> : null}
+        {state.path ? <button className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-black text-neutral-900 hover:bg-neutral-50" onClick={state.upPath} type="button">Up</button> : null}
       </div>
       {state.tree.length ? (
         <div className="divide-y divide-neutral-200">
@@ -243,7 +263,7 @@ function CommitView({ state }) {
             <p className="mt-1 text-sm text-neutral-600">{commit.author} committed {new Date(commit.date).toLocaleString()}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <code className="rounded bg-neutral-100 px-2 py-1 text-xs">{commit.hash.slice(0, 12)}</code>
-              <Button className="min-h-8 px-2" onClick={() => state.openDiff(commit)}>View diff</Button>
+              <button className="inline-flex min-h-8 cursor-pointer items-center justify-center rounded-md border border-neutral-300 bg-white px-2 text-sm font-black text-neutral-900 hover:bg-neutral-50" onClick={() => state.openDiff(commit)} type="button">View diff</button>
             </div>
           </article>
         )) : <p className="text-sm text-neutral-600">No commits have been pushed yet.</p>}
@@ -284,10 +304,10 @@ function BranchForm({ state }) {
       <strong>Create branch</strong>
       <Input name="name" placeholder="feature/r2-cache" required />
       <Input name="from" placeholder={state.ref || "HEAD"} />
-      <Button variant="primary" disabled={state.busy} type="submit">
+      <button className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1f883d] bg-[#1f883d] px-3 text-sm font-black text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60" disabled={state.busy} type="submit">
         <Icon icon={GitBranchIcon} size={17} />
         Create branch
-      </Button>
+      </button>
     </form>
   );
 }
@@ -333,10 +353,10 @@ function PullForm({ state }) {
       <Select name="target" defaultValue={state.branches.find((branch) => branch.current)?.name || state.branches[0]?.name || ""}>
         {state.branches.map((branch) => <option key={branch.name} value={branch.name}>{branch.name}</option>)}
       </Select>
-      <Button variant="primary" disabled={state.busy || state.branches.length < 2} type="submit">
+      <button className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1f883d] bg-[#1f883d] px-3 text-sm font-black text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60" disabled={state.busy || state.branches.length < 2} type="submit">
         <Icon icon={GitPullRequestIcon} size={17} />
         Open pull request
-      </Button>
+      </button>
     </form>
   );
 }
@@ -365,7 +385,7 @@ function SettingsView({ state, repo, clone }) {
       <Panel className="border-red-300 p-4">
         <Icon icon={Cancel01Icon} size={22} className="text-red-600" />
         <strong className="mt-3 block">Danger zone</strong>
-        <Button className="mt-3" variant="danger" onClick={state.deleteRepo}>Delete repository</Button>
+        <button className="mt-3 inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-red-600 bg-white px-3 text-sm font-black text-red-600 hover:bg-red-50" onClick={state.deleteRepo} type="button">Delete repository</button>
       </Panel>
     </div>
   );
@@ -379,7 +399,7 @@ function Preview({ title, subtitle, content, onClose }) {
           <strong>{title}</strong>
           <p className="text-sm text-neutral-600">{subtitle}</p>
         </div>
-        <Button onClick={onClose}>Close</Button>
+        <button className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-black text-neutral-900 hover:bg-neutral-50" onClick={onClose} type="button">Close</button>
       </div>
       <pre className="max-h-[520px] overflow-auto bg-[#0d1117] p-4 text-sm leading-6 text-[#e6edf3]">
         {content}

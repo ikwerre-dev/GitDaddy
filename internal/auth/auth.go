@@ -25,6 +25,7 @@ type User struct {
 type UserStore interface {
 	CreateUser(context.Context, User) (User, error)
 	FindByUsername(context.Context, string) (User, error)
+	FindByID(context.Context, int64) (User, error)
 }
 
 type SessionStore interface {
@@ -161,10 +162,7 @@ func (s *Service) DeleteToken(ctx context.Context, userID, tokenID int64) error 
 }
 
 func (s *Service) findByID(ctx context.Context, id int64) (User, error) {
-	if mem, ok := s.users.(*MemoryUserStore); ok {
-		return mem.FindByID(ctx, id)
-	}
-	return User{}, errors.New("user lookup by id unsupported")
+	return s.users.FindByID(ctx, id)
 }
 
 func HashPassword(password string) string {
