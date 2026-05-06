@@ -88,6 +88,18 @@ R2 owns:
 - packfile backups
 - disaster-recovery artifacts
 
+## Snapshot Compression
+
+GitDaddy supports configurable snapshot compression through `GITDADDY_SNAPSHOT_COMPRESSION`.
+
+- `lz4` is the default for worker and R2 smoke-test snapshots. It favors throughput and low CPU, which fits Git repositories because Git has already delta-compressed and packed most object data.
+- `gzip` remains available when smaller object size is more important than worker speed.
+- `none` is available for local debugging.
+
+LZ4 is not universally “better” than gzip. It is better for this async backup path when the bottleneck is worker CPU, push-to-backup latency, or queue depth. Gzip can still be better when R2 storage cost or network transfer size dominates.
+
+R2 writes include retry/backoff behavior and object metadata for snapshot hash and size. That makes the R2 path smoother under transient 429/5xx responses and easier to verify later.
+
 ## Module Boundaries
 
 Backend modules:

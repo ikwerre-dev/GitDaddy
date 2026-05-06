@@ -17,15 +17,15 @@ type Processor struct {
 	compression git.SnapshotCompression
 }
 
-func NewProcessor(queue queue.Queue, git *git.Service, objects storage.ObjectStore) *Processor {
-	return NewProcessorWithCompression(queue, git, objects, git.SnapshotCompressionGzip)
+func NewProcessor(queue queue.Queue, gitService *git.Service, objects storage.ObjectStore) *Processor {
+	return NewProcessorWithCompression(queue, gitService, objects, git.SnapshotCompressionGzip)
 }
 
-func NewProcessorWithCompression(queue queue.Queue, git *git.Service, objects storage.ObjectStore, compression git.SnapshotCompression) *Processor {
+func NewProcessorWithCompression(queue queue.Queue, gitService *git.Service, objects storage.ObjectStore, compression git.SnapshotCompression) *Processor {
 	if compression == "" {
 		compression = git.SnapshotCompressionGzip
 	}
-	return &Processor{queue: queue, git: git, objects: objects, compression: compression}
+	return &Processor{queue: queue, git: gitService, objects: objects, compression: compression}
 }
 
 func (p *Processor) ProcessOne(ctx context.Context) error {

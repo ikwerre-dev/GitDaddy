@@ -73,4 +73,16 @@ R2_SECRET_ACCESS_KEY=
 R2_REGION=auto
 ```
 
-The R2 smoke test uploads a temporary bare-repository snapshot to `smoke/gitdaddy-<timestamp>.tar.gz`, downloads it, and verifies the bytes match.
+The R2 smoke test uploads a temporary bare-repository snapshot to `smoke/gitdaddy-<timestamp>.<compression-extension>`, downloads it, and verifies the bytes match.
+
+## Snapshot Compression
+
+Repository snapshots use `GITDADDY_SNAPSHOT_COMPRESSION`, which defaults to `lz4` in Docker Compose and the R2 smoke test.
+
+Supported values:
+
+- `lz4`: fastest default for Git repository snapshots. Git objects are already compressed, so LZ4 usually reduces worker CPU time and gets data to R2 faster.
+- `gzip`: smaller objects in some cases, but more CPU-heavy and slower for async workers.
+- `none`: plain tar snapshots for debugging.
+
+R2 uploads also include object metadata for the snapshot SHA-256 and byte length, and transient R2 failures are retried with backoff.
