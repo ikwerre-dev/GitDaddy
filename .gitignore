@@ -8,3 +8,4 @@ coverage/
 .gitdaddy/
 .cache/
 tmp/
+.gocache/

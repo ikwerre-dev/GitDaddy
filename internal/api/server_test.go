@@ -81,6 +81,21 @@ func TestSecurityHeadersAndCors(t *testing.T) {
 	}
 }
 
+func TestGitPathPartsAcceptsBrowserRepoURLs(t *testing.T) {
+	owner, name, ok := gitPathParts("/git/honour/gitdaddy")
+	if !ok || owner != "honour" || name != "gitdaddy" {
+		t.Fatalf("unexpected plain repo parse: %q %q %v", owner, name, ok)
+	}
+	owner, name, ok = gitPathParts("/git/honour/gitdaddy.git")
+	if !ok || owner != "honour" || name != "gitdaddy" {
+		t.Fatalf("unexpected .git repo parse: %q %q %v", owner, name, ok)
+	}
+	_, _, ok = gitPathParts("/git/honour/gitdaddy/info/refs")
+	if ok {
+		t.Fatal("smart HTTP subpaths must still require .git suffix")
+	}
+}
+
 func TestNormalGitCommandLinePushAndClone(t *testing.T) {
 	authSvc := auth.NewService(auth.NewMemoryUserStore(), auth.NewMemorySessionStore())
 	repoSvc := repo.NewService(repo.NewMemoryStore())

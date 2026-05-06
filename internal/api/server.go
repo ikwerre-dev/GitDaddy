@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"strconv"
@@ -475,6 +476,21 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isRepoLanding(r.URL.Path) {
+		if repository.Visibility == "private" {
+			user, ok := s.basicUser(w, r)
+			if !ok {
+				return
+			}
+			if !s.repos.CanRead(r.Context(), repository, user.ID) {
+				http.Error(w, "read permission required", http.StatusForbidden)
+				return
+			}
+		}
+		s.gitRepoLanding(w, r, owner.Username, repository)
+		return
+	}
+
 	receivePack := isReceivePack(r)
 	if receivePack || repository.Visibility == "private" {
 		user, ok := s.basicUser(w, r)
@@ -497,6 +513,38 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.queue.Enqueue(r.Context(), queue.Job{Type: "repo.sync", Attrs: map[string]string{"owner": owner.Username, "repo": repository.Name}})
+}
+
+func (s *Server) gitRepoLanding(w http.ResponseWriter, r *http.Request, owner string, repository repo.Repository) {
+	branches, _ := s.git.Branches(r.Context(), owner, repository.Name)
+	commits, _ := s.git.Commits(r.Context(), owner, repository.Name, "HEAD", 5)
+	clone := fmt.Sprintf("%s://%s/git/%s/%s.git", scheme(r), r.Host, owner, repository.Name)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = fmt.Fprintf(w, `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%s/%s - GitDaddy</title>
+<style>
+body{margin:0;background:#f7f8f4;color:#1f2328;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 18px}
+.card{background:white;border:1px solid #1f2328;border-radius:16px;box-shadow:6px 6px 0 #1f2328;overflow:hidden}
+.hero{padding:32px;border-bottom:1px solid #1f2328;position:relative}
+.dots{position:absolute;right:0;top:0;width:130px;height:90px;background-image:radial-gradient(circle,#1f2328 1px,transparent 1px);background-size:9px 9px;opacity:.18}
+h1{font-size:42px;margin:0 0 8px;font-weight:900}.muted{color:#667085}.body{display:grid;gap:18px;padding:24px}
+code{display:block;background:#1f2328;color:#8cffb7;border-radius:8px;padding:14px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.panel{border:1px solid #d0d7de;border-radius:10px;padding:14px}
+a{color:#0969da;font-weight:800;text-decoration:none}
+</style></head><body><main><section class="card"><div class="hero"><div class="dots"></div>
+<p class="muted">GitDaddy repository</p><h1>%s/%s</h1><strong>%s</strong></div><div class="body">
+<div><strong>Clone</strong><code>git clone %s</code></div>
+<div class="grid"><div class="panel"><strong>Branches</strong><p class="muted">%d branch(es)</p></div><div class="panel"><strong>Recent commits</strong><p class="muted">%d commit(s) shown</p></div></div>
+<div><strong>Latest commits</strong>`, owner, repository.Name, owner, repository.Name, repository.Visibility, clone, len(branches), len(commits))
+	if len(commits) == 0 {
+		_, _ = fmt.Fprint(w, `<p class="muted">No commits pushed yet.</p>`)
+	}
+	for _, commit := range commits {
+		_, _ = fmt.Fprintf(w, `<div class="panel"><strong>%s</strong><p class="muted">%s · %s</p></div>`, html.EscapeString(commit.Subject), html.EscapeString(commit.Author), shortHash(commit.Hash))
+	}
+	_, _ = fmt.Fprint(w, `</div></div></section></main></body></html>`)
 }
 
 func (s *Server) resolveRepo(w http.ResponseWriter, r *http.Request) (auth.User, repo.Repository, bool) {
@@ -609,7 +657,7 @@ func gitPathParts(path string) (string, string, bool) {
 	if len(parts) < 2 {
 		return "", "", false
 	}
-	if !strings.HasSuffix(parts[1], ".git") {
+	if len(parts) > 2 && !strings.HasSuffix(parts[1], ".git") {
 		return "", "", false
 	}
 	repoName := strings.TrimSuffix(parts[1], ".git")
@@ -617,6 +665,28 @@ func gitPathParts(path string) (string, string, bool) {
 		return "", "", false
 	}
 	return parts[0], repoName, true
+}
+
+func isRepoLanding(path string) bool {
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(path, "/git/"), "/"), "/")
+	return len(parts) == 2
+}
+
+func scheme(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return proto
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func shortHash(hash string) string {
+	if len(hash) <= 12 {
+		return html.EscapeString(hash)
+	}
+	return html.EscapeString(hash[:12])
 }
 
 func isReceivePack(r *http.Request) bool {

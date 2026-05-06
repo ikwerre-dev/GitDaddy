@@ -22,11 +22,11 @@ type RepoStore struct{ store *Store }
 type PermissionStore struct{ store *Store }
 type PullRequestStore struct{ store *Store }
 
-func (s *Store) Users() *UserStore { return &UserStore{store: s} }
-func (s *Store) Sessions() *SessionStore { return &SessionStore{store: s} }
-func (s *Store) Tokens() *TokenStore { return &TokenStore{store: s} }
-func (s *Store) Repos() *RepoStore { return &RepoStore{store: s} }
-func (s *Store) Permissions() *PermissionStore { return &PermissionStore{store: s} }
+func (s *Store) Users() *UserStore               { return &UserStore{store: s} }
+func (s *Store) Sessions() *SessionStore         { return &SessionStore{store: s} }
+func (s *Store) Tokens() *TokenStore             { return &TokenStore{store: s} }
+func (s *Store) Repos() *RepoStore               { return &RepoStore{store: s} }
+func (s *Store) Permissions() *PermissionStore   { return &PermissionStore{store: s} }
 func (s *Store) PullRequests() *PullRequestStore { return &PullRequestStore{store: s} }
 
 func Open(ctx context.Context, url string) (*Store, error) {
@@ -78,9 +78,9 @@ CREATE TABLE IF NOT EXISTS repositories (
   name TEXT NOT NULL,
   owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   visibility TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL,
-  UNIQUE(owner_id, lower(name))
+  created_at TIMESTAMPTZ NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS repositories_owner_lower_name_idx ON repositories(owner_id, lower(name));
 CREATE TABLE IF NOT EXISTS permissions (
   repo_id BIGINT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
