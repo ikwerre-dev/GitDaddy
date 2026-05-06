@@ -23,11 +23,21 @@ func main() {
 	authn := auth.NewService(users, sessions)
 	repos := repo.NewService(repo.NewMemoryStore())
 	gitSvc := git.NewService(repoRoot)
-	objects := storage.NewLocalObjectStore(objectRoot)
+	objects, objectMode, err := storage.NewFromEnv(storage.EnvConfig{
+		ObjectRoot:    objectRoot,
+		R2Endpoint:    os.Getenv("R2_ENDPOINT"),
+		R2Bucket:      os.Getenv("R2_BUCKET"),
+		R2AccessKeyID: os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretKey:   os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2Region:      env("R2_REGION", "auto"),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	jobs := queue.NewMemoryQueue()
 
 	handler := api.NewServer(authn, repos, gitSvc, objects, jobs)
-	log.Printf("gitdaddy backend listening on %s", addr)
+	log.Printf("gitdaddy backend listening on %s with %s object storage", addr, objectMode)
 	if err := http.ListenAndServe(addr, handler.Routes()); err != nil {
 		log.Fatal(err)
 	}

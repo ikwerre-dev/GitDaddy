@@ -6,4 +6,5 @@ coverage/
 *.log
 .env
 .gitdaddy/
+.cache/
 tmp/

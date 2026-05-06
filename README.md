@@ -56,3 +56,21 @@ curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/repos/<owner>
 go test ./...
 cd web && npm run build
 ```
+
+## Full Test Script
+
+```bash
+./test.sh
+```
+
+The script runs Go tests, the standard Git command-line integration test, Go builds, Docker Compose validation, the Next.js production build, and a live R2 round-trip smoke test when these variables are set:
+
+```bash
+R2_ENDPOINT=
+R2_BUCKET=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_REGION=auto
+```
+
+The R2 smoke test uploads a temporary bare-repository snapshot to `smoke/gitdaddy-<timestamp>.tar.gz`, downloads it, and verifies the bytes match.

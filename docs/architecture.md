@@ -120,3 +120,14 @@ Backend instances are stateless except for local ephemeral repository cache. Any
 ## Open-Source Readiness
 
 The repository includes a permissive license, documentation, Docker Compose, startup scripts, tests, and a dependency-light local development path. Production deployments can replace the in-memory development stores with Postgres, Redis, and R2 implementations behind the same interfaces.
+
+## Verification
+
+`./test.sh` runs the main local verification path:
+
+- Go unit and integration tests.
+- A real Git command-line push and clone integration test.
+- Go binary builds.
+- Docker Compose config validation.
+- Next.js production build.
+- Live R2 upload/download smoke test when R2 env vars are present.
