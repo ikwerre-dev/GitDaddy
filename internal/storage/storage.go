@@ -21,6 +21,7 @@ import (
 type ObjectStore interface {
 	Put(context.Context, string, []byte) error
 	Get(context.Context, string) ([]byte, error)
+	Delete(context.Context, string) error
 }
 
 type LocalObjectStore struct {
@@ -41,6 +42,14 @@ func (s *LocalObjectStore) Put(_ context.Context, key string, body []byte) error
 
 func (s *LocalObjectStore) Get(_ context.Context, key string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(s.root, key))
+}
+
+func (s *LocalObjectStore) Delete(_ context.Context, key string) error {
+	err := os.Remove(filepath.Join(s.root, key))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 type EnvConfig struct {
@@ -130,6 +139,17 @@ func (s *R2ObjectStore) Get(ctx context.Context, key string) ([]byte, error) {
 	}
 	defer res.Body.Close()
 	return io.ReadAll(res.Body)
+}
+
+func (s *R2ObjectStore) Delete(ctx context.Context, key string) error {
+	return s.do(ctx, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, s.objectURL(key), nil)
+		if err != nil {
+			return nil, err
+		}
+		s.sign(req, nil)
+		return req, nil
+	})
 }
 
 func (s *R2ObjectStore) do(ctx context.Context, build func() (*http.Request, error)) error {

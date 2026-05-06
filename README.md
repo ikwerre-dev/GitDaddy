@@ -38,6 +38,7 @@ Storage and worker behavior:
 - R2 stores Git database artifacts instead of one full repository blob.
 - Object keys use the prefix `repos/<owner>/<repo>/git/`, including `objects/**`, `refs/**`, `packed-refs`, `HEAD`, and `config`.
 - Git objects are content-addressed, so new commits add new object/pack files while refs move independently.
+- A `.gitdaddy-manifest.json` file tracks current artifacts so stale refs/artifacts can be removed on later syncs.
 - R2 upload/download smoke testing is included in `./test.sh`.
 
 Security-relevant defaults:
@@ -210,6 +211,7 @@ repos/honour/gitdaddy/git/HEAD
 repos/honour/gitdaddy/git/refs/heads/main
 repos/honour/gitdaddy/git/objects/pack/pack-abc123.pack
 repos/honour/gitdaddy/git/objects/ab/cdef...
+repos/honour/gitdaddy/git/.gitdaddy-manifest.json
 ```
 
 This keeps R2 aligned with Git's version-control model instead of uploading a single snapshot for every push.

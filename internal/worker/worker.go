@@ -3,12 +3,14 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,13 +55,14 @@ func (p *Processor) ProcessOne(ctx context.Context) error {
 		log.Printf("r2 git sync failed owner=%s repo=%s prefix=%s duration=%s error=%v", owner, name, prefix, time.Since(started).Round(time.Millisecond), err)
 		return err
 	}
-	log.Printf("r2 git sync complete owner=%s repo=%s prefix=%s uploaded=%d skipped=%d bytes=%d duration=%s", owner, name, prefix, result.Uploaded, result.Skipped, result.Bytes, time.Since(started).Round(time.Millisecond))
+	log.Printf("r2 git sync complete owner=%s repo=%s prefix=%s uploaded=%d skipped=%d deleted=%d bytes=%d duration=%s", owner, name, prefix, result.Uploaded, result.Skipped, result.Deleted, result.Bytes, time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
 type syncResult struct {
 	Uploaded int
 	Skipped  int
+	Deleted  int
 	Bytes    int64
 }
 
@@ -69,6 +72,7 @@ func (p *Processor) syncGitDatabase(ctx context.Context, owner, name, prefix str
 		return syncResult{}, err
 	}
 	var result syncResult
+	current := map[string]struct{}{}
 	err = filepath.WalkDir(repoPath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -95,6 +99,7 @@ func (p *Processor) syncGitDatabase(ctx context.Context, owner, name, prefix str
 			return err
 		}
 		key := prefix + "/" + rel
+		current[key] = struct{}{}
 		changed, err := p.putIfChanged(ctx, key, body)
 		if err != nil {
 			return err
@@ -108,7 +113,18 @@ func (p *Processor) syncGitDatabase(ctx context.Context, owner, name, prefix str
 		}
 		return nil
 	})
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	deleted, err := p.deleteStaleArtifacts(ctx, prefix, current)
+	if err != nil {
+		return result, err
+	}
+	result.Deleted = deleted
+	if err := p.writeManifest(ctx, prefix, current); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func (p *Processor) putIfChanged(ctx context.Context, key string, body []byte) (bool, error) {
@@ -128,4 +144,52 @@ func skipGitDir(path string) bool {
 
 func skipGitFile(path string) bool {
 	return strings.HasSuffix(path, ".lock") || strings.Contains(path, "/tmp_")
+}
+
+func (p *Processor) deleteStaleArtifacts(ctx context.Context, prefix string, current map[string]struct{}) (int, error) {
+	previous, err := p.readManifest(ctx, prefix)
+	if err != nil {
+		return 0, nil
+	}
+	deleted := 0
+	for _, key := range previous {
+		if _, ok := current[key]; ok || key == manifestKey(prefix) {
+			continue
+		}
+		if err := p.objects.Delete(ctx, key); err != nil {
+			return deleted, err
+		}
+		deleted++
+		log.Printf("r2 git artifact deleted key=%s", key)
+	}
+	return deleted, nil
+}
+
+func (p *Processor) readManifest(ctx context.Context, prefix string) ([]string, error) {
+	body, err := p.objects.Get(ctx, manifestKey(prefix))
+	if err != nil {
+		return nil, err
+	}
+	var keys []string
+	if err := json.Unmarshal(body, &keys); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (p *Processor) writeManifest(ctx context.Context, prefix string, current map[string]struct{}) error {
+	keys := make([]string, 0, len(current))
+	for key := range current {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	body, err := json.MarshalIndent(keys, "", "  ")
+	if err != nil {
+		return err
+	}
+	return p.objects.Put(ctx, manifestKey(prefix), body)
+}
+
+func manifestKey(prefix string) string {
+	return prefix + "/.gitdaddy-manifest.json"
 }

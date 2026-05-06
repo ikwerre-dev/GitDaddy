@@ -89,6 +89,7 @@ R2 owns:
 - Git object files under `repos/<owner>/<repo>/git/objects/**`
 - Git refs under `repos/<owner>/<repo>/git/refs/**`
 - `HEAD`, `config`, and `packed-refs` artifacts
+- `.gitdaddy-manifest.json` for stale artifact cleanup
 - disaster-recovery artifacts
 
 ## R2 Git Artifact Sync
@@ -102,9 +103,10 @@ repos/honour/gitdaddy/git/HEAD
 repos/honour/gitdaddy/git/refs/heads/main
 repos/honour/gitdaddy/git/objects/pack/pack-abc123.pack
 repos/honour/gitdaddy/git/objects/ab/cdef...
+repos/honour/gitdaddy/git/.gitdaddy-manifest.json
 ```
 
-The worker compares existing object bytes before writing, skips unchanged artifacts, logs uploaded/skipped counts, and retries transient R2 failures through the storage layer.
+The worker compares existing object bytes before writing, skips unchanged artifacts, deletes artifacts that disappeared from the local bare repo based on the manifest, logs uploaded/skipped/deleted counts, and retries transient R2 failures through the storage layer.
 
 ## Module Boundaries
 
