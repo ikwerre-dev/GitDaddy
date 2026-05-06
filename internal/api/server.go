@@ -228,6 +228,9 @@ func (s *Server) listRepos(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if repos == nil {
+		repos = []repo.Repository{}
+	}
 	writeJSON(w, http.StatusOK, repos)
 }
 
@@ -314,6 +317,9 @@ func (s *Server) listPullRequests(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	if pulls == nil {
+		pulls = []repo.PullRequest{}
 	}
 	writeJSON(w, http.StatusOK, pulls)
 }

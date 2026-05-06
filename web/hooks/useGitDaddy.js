@@ -82,10 +82,11 @@ export function useGitDaddy() {
 
   async function loadRepos(activeToken = token) {
     const [repoList, stats] = await Promise.all([gitdaddyApi.repos(activeToken), gitdaddyApi.stats(activeToken)]);
-    setRepos(repoList);
+    const nextRepos = Array.isArray(repoList) ? repoList : [];
+    setRepos(nextRepos);
     setPlatformStats(stats);
-    if (!selected && repoList.length > 0) setSelected(repoList[0]);
-    return repoList;
+    if (!selected && nextRepos.length > 0) setSelected(nextRepos[0]);
+    return nextRepos;
   }
 
   async function loadRepo(repo = selected, activeToken = token, nextRef = ref, nextPath = path) {
@@ -100,14 +101,19 @@ export function useGitDaddy() {
         gitdaddyApi.pulls(activeToken, owner, repo.name),
         gitdaddyApi.collaborators(activeToken, owner, repo.name).catch(() => []),
       ]);
-      const defaultRef = branchData.find((branch) => branch.current)?.name || branchData[0]?.name || "HEAD";
+      const nextBranches = Array.isArray(branchData) ? branchData : [];
+      const nextCommits = Array.isArray(commitData) ? commitData : [];
+      const nextTree = Array.isArray(treeData) ? treeData : [];
+      const nextPulls = Array.isArray(pullData) ? pullData : [];
+      const nextCollaborators = Array.isArray(collaboratorData) ? collaboratorData : [];
+      const defaultRef = nextBranches.find((branch) => branch.current)?.name || nextBranches[0]?.name || "HEAD";
       setRepoDetail(detail.repository);
-      setBranches(branchData);
-      setCommits(commitData);
-      setTree(treeData);
+      setBranches(nextBranches);
+      setCommits(nextCommits);
+      setTree(nextTree);
       setRepoStats(stats);
-      setPulls(pullData);
-      setCollaborators(collaboratorData);
+      setPulls(nextPulls);
+      setCollaborators(nextCollaborators);
       setRef(nextRef && nextRef !== "HEAD" ? nextRef : defaultRef);
       setPath(nextPath || "");
       setFilePreview(null);

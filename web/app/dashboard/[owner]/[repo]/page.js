@@ -1,0 +1,45 @@
+"use client";
+
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { Repository } from "../../../../components/Repository";
+import { useGitDaddy } from "../../../../hooks/useGitDaddy";
+
+export default function RepoPage() {
+  const params = useParams();
+  const router = useRouter();
+  const state = useGitDaddy();
+
+  useEffect(() => {
+    if (!state.token || !state.user) {
+      router.replace("/auth");
+      return;
+    }
+
+    // Find and select the repo based on URL params
+    if (params.owner && params.repo && state.repos.length > 0) {
+      const repo = state.repos.find(
+        (r) => r.name === params.repo
+      );
+      if (repo && state.selected?.name !== repo.name) {
+        state.chooseRepo(repo);
+      }
+    }
+  }, [params.owner, params.repo, state.token, state.user, state.repos, router]);
+
+  if (!state.token || !state.user) {
+    return null;
+  }
+
+  const repo = state.repoDetail || state.selected;
+
+  if (!repo) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading repository...</p>
+      </div>
+    );
+  }
+
+  return <Repository state={state} repo={repo} />;
+}

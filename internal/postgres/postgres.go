@@ -219,7 +219,7 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID int64) ([]repo.Reposito
 		return nil, err
 	}
 	defer rows.Close()
-	var repos []repo.Repository
+	repos := []repo.Repository{}
 	for rows.Next() {
 		var repository repo.Repository
 		if err := rows.Scan(&repository.ID, &repository.Name, &repository.OwnerID, &repository.Visibility, &repository.CreatedAt); err != nil {
@@ -281,7 +281,7 @@ func (s *Store) ListByRepo(ctx context.Context, repoID int64) ([]repo.Permission
 		return nil, err
 	}
 	defer rows.Close()
-	var permissions []repo.Permission
+	permissions := []repo.Permission{}
 	for rows.Next() {
 		var permission repo.Permission
 		if err := rows.Scan(&permission.UserID, &permission.RepoID, &permission.Role); err != nil {
@@ -319,7 +319,7 @@ func (s *Store) ListPullRequests(ctx context.Context, repoID int64) ([]repo.Pull
 		return nil, err
 	}
 	defer rows.Close()
-	var pulls []repo.PullRequest
+	pulls := []repo.PullRequest{}
 	for rows.Next() {
 		var pull repo.PullRequest
 		if err := rows.Scan(&pull.ID, &pull.RepoID, &pull.Title, &pull.Body, &pull.Source, &pull.Target, &pull.Status, &pull.AuthorID, &pull.CreatedAt); err != nil {

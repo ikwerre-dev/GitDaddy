@@ -9,71 +9,103 @@ import { Input, Message } from "./ui";
 export function AuthPage({ state }) {
   const router = useRouter();
   const [mode, setMode] = useState("login");
+  const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
-    if (state.token && state.user) router.replace("/");
-  }, [router, state.token, state.user]);
+    // Only redirect once when both token and user are available
+    if (state.token && state.user && !hasRedirected) {
+      setHasRedirected(true);
+      router.push("/dashboard");
+    }
+  }, [router, state.token, state.user, hasRedirected]);
 
   return (
-    <main className="min-h-screen bg-[#f7f8f4] font-['Space_Grotesk','Inter',ui-sans-serif,system-ui] text-[#1f2328]">
+    <main className="min-h-screen bg-[#f6f8fa]">
       <section className="mx-auto grid min-h-screen max-w-[1180px] content-center px-4 py-10 sm:px-8">
         <div className="mb-6 flex items-center justify-between">
-          <a className="flex items-center gap-2 text-lg font-black" href="/">
+          <a className="flex items-center gap-2 text-lg font-bold" href="/">
             <Icon icon={GitBranchIcon} size={24} />
             <span>GitDaddy</span>
           </a>
-          <a className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-black shadow-[2px_2px_0_#1f2328]" href="/">
+          <a
+            className="inline-flex h-8 items-center rounded-md border border-[#d0d7de] bg-white px-3 text-sm font-medium hover:bg-[#f6f8fa]"
+            href="/"
+          >
             Back home
           </a>
         </div>
 
-        <div className="grid overflow-hidden rounded-2xl border border-neutral-950 bg-white shadow-[6px_6px_0_#1f2328] lg:grid-cols-[1fr_430px]">
-          <section className="relative hidden min-h-[560px] border-r border-neutral-950 p-10 lg:block">
-            <PixelPanel className="absolute left-0 top-16 h-64 w-32" tone="dark" />
-            <PixelPanel className="absolute bottom-0 right-0 h-48 w-56" tone="warm" />
-            <div className="relative z-10 grid h-full content-center">
-              <p className="text-sm font-black uppercase text-neutral-500">Workspace access</p>
-              <h1 className="mt-4 max-w-xl text-6xl font-black leading-[0.95]">Your tiny GitHub-ish server is waiting.</h1>
-              <p className="mt-6 max-w-lg text-lg font-semibold leading-8 text-neutral-600">
-                Login, create repos, push code, open branches, and keep your setup light enough for a normal VPS.
+        <div className="grid overflow-hidden rounded-lg border border-[#d0d7de] bg-white shadow-sm lg:grid-cols-[1fr_420px]">
+          <section className="relative hidden min-h-[560px] border-r border-[#d0d7de] bg-[#f6f8fa] p-10 lg:block">
+            <div className="grid h-full content-center">
+              <p className="text-sm font-semibold uppercase text-[#57606a]">
+                Workspace access
+              </p>
+              <h1 className="mt-4 max-w-xl text-5xl font-bold leading-tight">
+                Your self-hosted Git platform
+              </h1>
+              <p className="mt-6 max-w-lg text-lg leading-8 text-[#57606a]">
+                Login to access your repositories, manage code, and collaborate with your team.
               </p>
             </div>
           </section>
 
-          <section className="relative overflow-hidden p-6 sm:p-8">
-            <div className="absolute right-0 top-0 h-28 w-32 [background-image:radial-gradient(circle,#1f2328_1px,transparent_1px)] [background-size:9px_9px] opacity-20" aria-hidden="true" />
+          <section className="p-6 sm:p-8">
             <form
-              className="relative z-10 grid min-h-[500px] content-center gap-4"
+              className="grid min-h-[500px] content-center gap-4"
               onSubmit={async (event) => {
                 event.preventDefault();
-                await state.login(Object.fromEntries(new FormData(event.currentTarget)), mode);
+                await state.login(
+                  Object.fromEntries(new FormData(event.currentTarget)),
+                  mode
+                );
               }}
             >
               <div>
-                <p className="text-sm font-black uppercase text-neutral-500">{mode === "login" ? "Welcome back" : "Create workspace"}</p>
-                <h2 className="mt-2 text-4xl font-black">{mode === "login" ? "Login to GitDaddy" : "Start with GitDaddy"}</h2>
+                <p className="text-sm font-semibold uppercase text-[#57606a]">
+                  {mode === "login" ? "Welcome back" : "Get started"}
+                </p>
+                <h2 className="mt-2 text-3xl font-bold">
+                  {mode === "login" ? "Sign in to GitDaddy" : "Create your account"}
+                </h2>
               </div>
 
-              <div className="grid grid-cols-2 rounded-md border border-neutral-200 bg-neutral-50 p-1">
-                <button type="button" className={mode === "login" ? "min-h-10 cursor-pointer rounded bg-neutral-950 font-black text-white" : "min-h-10 cursor-pointer font-black text-neutral-600"} onClick={() => setMode("login")}>
-                  Login
+              <div className="grid grid-cols-2 gap-2 rounded-md border border-[#d0d7de] bg-[#f6f8fa] p-1">
+                <button
+                  type="button"
+                  className={
+                    mode === "login"
+                      ? "h-9 cursor-pointer rounded bg-white font-medium text-[#24292f] shadow-sm"
+                      : "h-9 cursor-pointer font-medium text-[#57606a]"
+                  }
+                  onClick={() => setMode("login")}
+                >
+                  Sign in
                 </button>
-                <button type="button" className={mode === "register" ? "min-h-10 cursor-pointer rounded bg-neutral-950 font-black text-white" : "min-h-10 cursor-pointer font-black text-neutral-600"} onClick={() => setMode("register")}>
+                <button
+                  type="button"
+                  className={
+                    mode === "register"
+                      ? "h-9 cursor-pointer rounded bg-white font-medium text-[#24292f] shadow-sm"
+                      : "h-9 cursor-pointer font-medium text-[#57606a]"
+                  }
+                  onClick={() => setMode("register")}
+                >
                   Sign up
                 </button>
               </div>
 
               <Input name="username" placeholder="Username" required />
-              {mode === "register" ? <Input name="email" placeholder="Email" /> : null}
+              {mode === "register" ? <Input name="email" placeholder="Email (optional)" /> : null}
               <Input name="password" placeholder="Password" type="password" required />
 
               <button
-                className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-950 bg-[#1f2328] px-4 text-sm font-black text-white shadow-[2px_2px_0_#1f2328] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1f883d] bg-[#1f883d] px-4 text-sm font-medium text-white hover:bg-[#1a7f37] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={state.busy}
                 type="submit"
               >
                 <Icon icon={ShieldKeyIcon} size={18} />
-                <span>{mode === "login" ? "Login" : "Create account"}</span>
+                <span>{mode === "login" ? "Sign in" : "Create account"}</span>
               </button>
               <Message>{state.message}</Message>
             </form>
@@ -81,18 +113,5 @@ export function AuthPage({ state }) {
         </div>
       </section>
     </main>
-  );
-}
-
-function PixelPanel({ className, tone }) {
-  const warm = tone === "warm";
-  return (
-    <div className={`pointer-events-none ${className}`} aria-hidden="true">
-      <div className="absolute inset-0 [background-image:radial-gradient(circle,#1f2328_1px,transparent_1px)] [background-size:9px_9px] opacity-20" />
-      <span className={`absolute bottom-0 left-0 h-10 w-16 ${warm ? "bg-[#ff7b72]" : "bg-[#1f2328]"}`} />
-      <span className={`absolute bottom-10 left-12 h-12 w-12 ${warm ? "bg-[#f0883e]" : "bg-neutral-300"}`} />
-      <span className={`absolute bottom-0 left-24 h-14 w-20 ${warm ? "bg-[#d29922]" : "bg-neutral-100"}`} />
-      <span className="absolute bottom-14 left-32 h-8 w-8 bg-white" />
-    </div>
   );
 }
