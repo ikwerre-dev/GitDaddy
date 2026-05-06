@@ -150,8 +150,8 @@ func TestRepoSyncEndpointQueuesR2Job(t *testing.T) {
 	token := login["token"].(string)
 	post(t, ts.URL+"/api/repos", token, map[string]string{"name": "demo", "visibility": "private"}, http.StatusCreated)
 	sync := post(t, ts.URL+"/api/repos/alice/demo/sync", token, map[string]string{}, http.StatusAccepted)
-	if sync["key"] != "repos/alice/demo.tar.lz4" {
-		t.Fatalf("unexpected sync key: %+v", sync)
+	if sync["prefix"] != "repos/alice/demo/git" {
+		t.Fatalf("unexpected sync prefix: %+v", sync)
 	}
 	if jobs.Len() != 1 {
 		t.Fatalf("expected one queued sync job, got %d", jobs.Len())

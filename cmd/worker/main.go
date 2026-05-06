@@ -41,7 +41,7 @@ func main() {
 	}
 	processor := worker.NewProcessorWithCompression(jobs, git.NewService(repoRoot), objects, compression)
 
-	log.Printf("gitdaddy worker started with %s object storage and %s snapshots", objectMode, compression)
+	log.Printf("gitdaddy worker started with %s object storage and git object/ref artifact sync", objectMode)
 	for {
 		if err := processor.ProcessOne(context.Background()); err != nil {
 			log.Printf("worker idle/error: %v", err)

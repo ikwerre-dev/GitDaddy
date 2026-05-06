@@ -34,6 +34,8 @@ export const gitdaddyApi = {
   branches: (token, owner, repo) => request(`/api/repos/${owner}/${repo}/branches`, { token }),
   createBranch: (token, owner, repo, body) => request(`/api/repos/${owner}/${repo}/branches`, { method: "POST", token, body }),
   commits: (token, owner, repo, ref = "HEAD") => request(`/api/repos/${owner}/${repo}/commits?ref=${encodeURIComponent(ref)}`, { token }),
+  rollbackCommit: (token, owner, repo, commit, body) =>
+    request(`/api/repos/${owner}/${repo}/commits/${encodeURIComponent(commit)}/rollback`, { method: "POST", token, body }),
   tree: (token, owner, repo, ref = "HEAD", path = "") =>
     request(`/api/repos/${owner}/${repo}/tree?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}`, { token }),
   file: (token, owner, repo, ref = "HEAD", path = "") =>

@@ -235,6 +235,20 @@ export function useGitDaddy() {
     if (result) setDiffPreview({ hash: commit.hash, diff: result.diff });
   }
 
+  async function rollbackCommit(commit, formData) {
+    return run(async () => {
+      const mode = formData.mode || "new";
+      const targetBranch = formData.branch || ref || "main";
+      const newBranch = mode === "new" ? formData.new_branch : "";
+      const reverted = await gitdaddyApi.rollbackCommit(token, owner, selected.name, commit.hash, {
+        branch: targetBranch,
+        new_branch: newBranch,
+      });
+      await loadRepo(selected, token, newBranch || targetBranch, path, { preservePreview: true });
+      return { commit: reverted, branch: newBranch || targetBranch };
+    }, (result) => `Rolled back into ${result.branch}`);
+  }
+
   async function upPath() {
     const parent = path.split("/").slice(0, -1).join("/");
     await loadRepo(selected, token, ref, parent);
@@ -307,7 +321,7 @@ export function useGitDaddy() {
       const result = await gitdaddyApi.syncRepo(token, owner, selected.name);
       await loadRepos(token);
       return result;
-    }, (result) => `R2 sync queued: ${result.key}`);
+    }, (result) => `R2 sync queued: ${result.prefix}`);
   }
 
   async function deleteRepo() {
@@ -360,6 +374,7 @@ export function useGitDaddy() {
     mergePullRequest,
     removeCollaborator,
     reviewPullRequest,
+    rollbackCommit,
     setActiveTab,
     setDiffPreview,
     setFilePreview,

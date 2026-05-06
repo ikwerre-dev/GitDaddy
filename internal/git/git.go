@@ -208,6 +208,76 @@ func (s *Service) CommitFile(ctx context.Context, owner, name, branch, filePath,
 	return commits[0], nil
 }
 
+func (s *Service) RollbackCommit(ctx context.Context, owner, name, commit, branch, newBranch, authorName, authorEmail string) (Commit, error) {
+	repoPath, err := s.repoPath(owner, name)
+	if err != nil {
+		return Commit{}, err
+	}
+	commit = strings.TrimSpace(commit)
+	branch = strings.TrimSpace(branch)
+	newBranch = strings.TrimSpace(newBranch)
+	if commit == "" || unsafeRevision(commit) {
+		return Commit{}, errors.New("invalid commit")
+	}
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+	if unsafeRevision(branch) {
+		return Commit{}, errors.New("invalid target branch")
+	}
+	rollbackBranch := branch
+	if newBranch != "" {
+		if unsafeRevision(newBranch) {
+			return Commit{}, errors.New("invalid rollback branch")
+		}
+		if err := exec.CommandContext(ctx, "git", "check-ref-format", "--branch", newBranch).Run(); err != nil {
+			return Commit{}, errors.New("invalid rollback branch")
+		}
+		rollbackBranch = newBranch
+	}
+	if authorName = strings.TrimSpace(authorName); authorName == "" {
+		authorName = owner
+	}
+	if authorEmail = strings.TrimSpace(authorEmail); authorEmail == "" {
+		authorEmail = owner + "@gitdaddy.local"
+	}
+	workdir, err := os.MkdirTemp("", "gitdaddy-rollback-*")
+	if err != nil {
+		return Commit{}, err
+	}
+	defer os.RemoveAll(workdir)
+
+	if err := exec.CommandContext(ctx, "git", "clone", repoPath, workdir).Run(); err != nil {
+		return Commit{}, err
+	}
+	if err := runWorktreeGit(ctx, workdir, "config", "user.name", authorName); err != nil {
+		return Commit{}, err
+	}
+	if err := runWorktreeGit(ctx, workdir, "config", "user.email", authorEmail); err != nil {
+		return Commit{}, err
+	}
+	if newBranch != "" {
+		if err := runWorktreeGit(ctx, workdir, "checkout", "-B", rollbackBranch, "origin/"+branch); err != nil {
+			return Commit{}, err
+		}
+	} else if err := runWorktreeGit(ctx, workdir, "checkout", branch); err != nil {
+		return Commit{}, err
+	}
+	if err := runWorktreeGit(ctx, workdir, "revert", "--no-edit", commit); err != nil {
+		_ = runWorktreeGit(ctx, workdir, "revert", "--abort")
+		return Commit{}, fmt.Errorf("rollback has conflicts: %w", err)
+	}
+	if err := runWorktreeGit(ctx, workdir, "push", "origin", "HEAD:refs/heads/"+rollbackBranch); err != nil {
+		return Commit{}, err
+	}
+	commits, err := s.Commits(ctx, owner, name, rollbackBranch, 1)
+	if err != nil || len(commits) == 0 {
+		hash, _ := worktreeGitOutput(ctx, workdir, "rev-parse", "HEAD")
+		return Commit{Hash: strings.TrimSpace(hash), Author: authorName, Email: authorEmail, Subject: "Rollback " + commit}, nil
+	}
+	return commits[0], nil
+}
+
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
@@ -665,6 +735,21 @@ func gitCmdOutput(ctx context.Context, gitDir string, env []string, stdin io.Rea
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+func runWorktreeGit(ctx context.Context, dir string, args ...string) error {
+	_, err := worktreeGitOutput(ctx, dir, args...)
+	return err
+}
+
+func worktreeGitOutput(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s", strings.TrimSpace(string(out)))

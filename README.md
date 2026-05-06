@@ -35,9 +35,9 @@ Storage and worker behavior:
 
 - Push requests finish after local Git receive-pack succeeds.
 - R2 upload is queued asynchronously, so object storage is not in the push critical path.
-- Repository snapshots default to LZ4-compressed tar files: `.tar.lz4`.
-- `GITDADDY_SNAPSHOT_COMPRESSION` supports `lz4`, `gzip`, and `none`.
-- R2 uploads include snapshot SHA-256 and byte-length metadata.
+- R2 stores Git database artifacts instead of one full repository blob.
+- Object keys use the prefix `repos/<owner>/<repo>/git/`, including `objects/**`, `refs/**`, `packed-refs`, `HEAD`, and `config`.
+- Git objects are content-addressed, so new commits add new object/pack files while refs move independently.
 - R2 upload/download smoke testing is included in `./test.sh`.
 
 Security-relevant defaults:
@@ -193,16 +193,23 @@ R2_SECRET_ACCESS_KEY=
 R2_REGION=auto
 ```
 
-The R2 smoke test uploads a temporary bare-repository snapshot to `smoke/gitdaddy-<timestamp>.<compression-extension>`, downloads it, and verifies the bytes match.
+The R2 smoke test still performs a simple upload/download round trip to verify credentials and bucket access.
 
-## Snapshot Compression
+## R2 Git Artifacts
 
-Repository snapshots use `GITDADDY_SNAPSHOT_COMPRESSION`, which defaults to `lz4` in Docker Compose and the R2 smoke test.
+Repository sync jobs store the bare Git repository database under:
 
-Supported values:
+```text
+repos/<owner>/<repo>/git/
+```
 
-- `lz4`: fastest default for Git repository snapshots. Git objects are already compressed, so LZ4 usually reduces worker CPU time and gets data to R2 faster.
-- `gzip`: smaller objects in some cases, but more CPU-heavy and slower for async workers.
-- `none`: plain tar snapshots for debugging.
+Examples:
 
-R2 uploads also include object metadata for the snapshot SHA-256 and byte length, and transient R2 failures are retried with backoff.
+```text
+repos/honour/gitdaddy/git/HEAD
+repos/honour/gitdaddy/git/refs/heads/main
+repos/honour/gitdaddy/git/objects/pack/pack-abc123.pack
+repos/honour/gitdaddy/git/objects/ab/cdef...
+```
+
+This keeps R2 aligned with Git's version-control model instead of uploading a single snapshot for every push.

@@ -51,7 +51,7 @@ export function Sidebar({ user }) {
         <div className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#070a12]">
           <Icon icon={GitBranchIcon} size={21} />
         </div>
-        <strong className="text-base font-black">GitDaddy</strong>
+        <strong className="text-base font-semibold">GitDaddy</strong>
       </div>
 
       <nav className="grid gap-1.5 px-3">
@@ -75,8 +75,8 @@ function SideLink({ href, icon, label, active, onClick }) {
     <Link
       href={href}
       onClick={onClick}
-      className={`flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-black transition ${
-        active ? "bg-[#1b1e28] text-white" : "text-[#626674] hover:bg-[#111521] hover:text-white"
+      className={`flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition ${
+        active ? "bg-[#1b1e28] text-white" : "text-[#8b949e] hover:bg-[#111521] hover:text-white"
       }`}
     >
       <Icon icon={icon} size={18} />

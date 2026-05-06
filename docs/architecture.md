@@ -5,7 +5,7 @@ GitDaddy is an open-source, cloud-native Git hosting platform. It is intentional
 ## System Components
 
 - `go-backend`: HTTP API and Git smart HTTP entrypoint.
-- `worker-service`: asynchronous repository snapshot syncing to Cloudflare R2-compatible object storage.
+- `worker-service`: asynchronous Git object/ref artifact syncing to Cloudflare R2-compatible object storage.
 - `postgres`: durable system of record for users, repositories, permissions, and optional sessions.
 - `redis`: session cache, rate limits, job queue, and repository locks.
 - `frontend-ui`: Next.js web UI that talks only to backend APIs.
@@ -86,21 +86,25 @@ Ephemeral disk owns:
 
 R2 owns:
 
-- repository snapshots
-- packfile backups
+- Git object files under `repos/<owner>/<repo>/git/objects/**`
+- Git refs under `repos/<owner>/<repo>/git/refs/**`
+- `HEAD`, `config`, and `packed-refs` artifacts
 - disaster-recovery artifacts
 
-## Snapshot Compression
+## R2 Git Artifact Sync
 
-GitDaddy supports configurable snapshot compression through `GITDADDY_SNAPSHOT_COMPRESSION`.
+GitDaddy syncs the bare Git database to R2 instead of uploading one full tar snapshot per push. Git already stores content as immutable, content-addressed objects and packfiles, so a push normally adds new object/pack artifacts and updates small ref files.
 
-- `lz4` is the default for worker and R2 smoke-test snapshots. It favors throughput and low CPU, which fits Git repositories because Git has already delta-compressed and packed most object data.
-- `gzip` remains available when smaller object size is more important than worker speed.
-- `none` is available for local debugging.
+Example keys:
 
-LZ4 is not universally “better” than gzip. It is better for this async backup path when the bottleneck is worker CPU, push-to-backup latency, or queue depth. Gzip can still be better when R2 storage cost or network transfer size dominates.
+```text
+repos/honour/gitdaddy/git/HEAD
+repos/honour/gitdaddy/git/refs/heads/main
+repos/honour/gitdaddy/git/objects/pack/pack-abc123.pack
+repos/honour/gitdaddy/git/objects/ab/cdef...
+```
 
-R2 writes include retry/backoff behavior and object metadata for snapshot hash and size. That makes the R2 path smoother under transient 429/5xx responses and easier to verify later.
+The worker compares existing object bytes before writing, skips unchanged artifacts, logs uploaded/skipped counts, and retries transient R2 failures through the storage layer.
 
 ## Module Boundaries
 

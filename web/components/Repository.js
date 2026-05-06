@@ -338,6 +338,7 @@ function CommitView({ state }) {
                   <span className="sm:hidden">•••</span>
                 </button>
               </div>
+              {state.user ? <RollbackCommitControl commit={commit} state={state} /> : null}
             </article>
           ))
         ) : (
@@ -353,6 +354,54 @@ function CommitView({ state }) {
         />
       ) : null}
     </Panel>
+  );
+}
+
+function RollbackCommitControl({ commit, state }) {
+  const [mode, setMode] = useState("new");
+  const shortHash = commit.hash.slice(0, 7);
+  const currentBranch = state.ref && state.ref !== "HEAD" ? state.ref : state.branches[0]?.name || "main";
+  const suggestedBranch = `rollback/${shortHash}`;
+
+  return (
+    <form
+      className="sm:col-span-2 grid gap-2 rounded-md border border-[#d0d7de] bg-[#f6f8fa] p-3 lg:grid-cols-[170px_1fr_auto]"
+      onSubmit={(event) => {
+        event.preventDefault();
+        state.rollbackCommit(commit, Object.fromEntries(new FormData(event.currentTarget)));
+      }}
+    >
+      <Select
+        name="mode"
+        value={mode}
+        onChange={(event) => setMode(event.target.value)}
+        className="h-8 text-sm"
+      >
+        <option value="new">Rollback to new branch</option>
+        <option value="current">Rollback current branch</option>
+      </Select>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select name="branch" defaultValue={currentBranch} className="h-8 text-sm">
+          {state.branches.map((branch) => (
+            <option key={branch.name} value={branch.name}>
+              from {branch.name}
+            </option>
+          ))}
+        </Select>
+        {mode === "new" ? (
+          <Input name="new_branch" defaultValue={suggestedBranch} className="h-8 min-h-8 text-sm" />
+        ) : (
+          <input name="new_branch" type="hidden" value="" />
+        )}
+      </div>
+      <button
+        className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border border-[#d0d7de] bg-white px-3 text-sm font-medium hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={state.busy}
+        type="submit"
+      >
+        Rollback
+      </button>
+    </form>
   );
 }
 

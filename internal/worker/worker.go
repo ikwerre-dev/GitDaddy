@@ -1,10 +1,15 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gitdaddy/gitdaddy/internal/git"
@@ -40,18 +45,87 @@ func (p *Processor) ProcessOne(ctx context.Context) error {
 	}
 	owner := job.Attrs["owner"]
 	name := job.Attrs["repo"]
-	key := fmt.Sprintf("repos/%s/%s%s", owner, name, p.compression.Extension())
 	started := time.Now()
-	log.Printf("r2 sync started owner=%s repo=%s key=%s compression=%s", owner, name, key, p.compression)
-	snapshot, err := p.git.SnapshotWithOptions(owner, name, git.SnapshotOptions{Compression: p.compression})
+	prefix := fmt.Sprintf("repos/%s/%s/git", owner, name)
+	log.Printf("r2 git sync started owner=%s repo=%s prefix=%s", owner, name, prefix)
+	result, err := p.syncGitDatabase(ctx, owner, name, prefix)
 	if err != nil {
-		log.Printf("r2 sync snapshot failed owner=%s repo=%s key=%s error=%v", owner, name, key, err)
+		log.Printf("r2 git sync failed owner=%s repo=%s prefix=%s duration=%s error=%v", owner, name, prefix, time.Since(started).Round(time.Millisecond), err)
 		return err
 	}
-	if err := p.objects.Put(ctx, key, snapshot); err != nil {
-		log.Printf("r2 sync upload failed owner=%s repo=%s key=%s bytes=%d duration=%s error=%v", owner, name, key, len(snapshot), time.Since(started).Round(time.Millisecond), err)
-		return err
-	}
-	log.Printf("r2 sync uploaded owner=%s repo=%s key=%s bytes=%d duration=%s", owner, name, key, len(snapshot), time.Since(started).Round(time.Millisecond))
+	log.Printf("r2 git sync complete owner=%s repo=%s prefix=%s uploaded=%d skipped=%d bytes=%d duration=%s", owner, name, prefix, result.Uploaded, result.Skipped, result.Bytes, time.Since(started).Round(time.Millisecond))
 	return nil
+}
+
+type syncResult struct {
+	Uploaded int
+	Skipped  int
+	Bytes    int64
+}
+
+func (p *Processor) syncGitDatabase(ctx context.Context, owner, name, prefix string) (syncResult, error) {
+	repoPath, err := p.git.RepoPath(owner, name)
+	if err != nil {
+		return syncResult{}, err
+	}
+	var result syncResult
+	err = filepath.WalkDir(repoPath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(repoPath, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if entry.IsDir() {
+			if skipGitDir(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if skipGitFile(rel) {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		key := prefix + "/" + rel
+		changed, err := p.putIfChanged(ctx, key, body)
+		if err != nil {
+			return err
+		}
+		if changed {
+			result.Uploaded++
+			result.Bytes += int64(len(body))
+			log.Printf("r2 git object uploaded key=%s bytes=%d", key, len(body))
+		} else {
+			result.Skipped++
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (p *Processor) putIfChanged(ctx context.Context, key string, body []byte) (bool, error) {
+	current, err := p.objects.Get(ctx, key)
+	if err == nil && bytes.Equal(current, body) {
+		return false, nil
+	}
+	if err := p.objects.Put(ctx, key, body); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func skipGitDir(path string) bool {
+	return path == "hooks" || path == "logs" || path == "rr-cache" || strings.HasPrefix(path, "objects/tmp")
+}
+
+func skipGitFile(path string) bool {
+	return strings.HasSuffix(path, ".lock") || strings.Contains(path, "/tmp_")
 }

@@ -64,6 +64,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulls/{id}/review", s.reviewPullRequest)
 	mux.HandleFunc("POST /api/repos/{owner}/{repo}/pulls/{id}/merge", s.mergePullRequest)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", s.repoCommits)
+	mux.HandleFunc("POST /api/repos/{owner}/{repo}/commits/{commit}/rollback", s.rollbackCommit)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/tree", s.repoTree)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/file", s.repoFile)
 	mux.HandleFunc("PUT /api/repos/{owner}/{repo}/file", s.commitFile)
@@ -512,6 +513,34 @@ func (s *Server) repoCommits(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, commits)
 }
 
+func (s *Server) rollbackCommit(w http.ResponseWriter, r *http.Request) {
+	owner, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleWrite) {
+		return
+	}
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Branch    string `json:"branch"`
+		NewBranch string `json:"new_branch"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	commit, err := s.git.RollbackCommit(r.Context(), owner.Username, repository.Name, r.PathValue("commit"), req.Branch, req.NewBranch, user.Username, user.Email)
+	if err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	if err := s.enqueueRepoSync(r.Context(), owner.Username, repository.Name); err != nil {
+		s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "R2 sync failed to queue", err.Error())
+	}
+	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "Commit rolled back", fmt.Sprintf("%s rolled back %s", user.Username, r.PathValue("commit")))
+	writeJSON(w, http.StatusCreated, commit)
+}
+
 func (s *Server) repoTree(w http.ResponseWriter, r *http.Request) {
 	owner, repository, ok := s.resolveRepo(w, r)
 	if !ok {
@@ -606,7 +635,7 @@ func (s *Server) syncRepo(w http.ResponseWriter, r *http.Request) {
 	s.addNotification(owner.ID, repository.ID, owner.Username, repository.Name, "R2 sync queued", fmt.Sprintf("%s will be uploaded to object storage", repository.Name))
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"status": "queued",
-		"key":    fmt.Sprintf("repos/%s/%s%s", owner.Username, repository.Name, git.ParseSnapshotCompression(getenv("GITDADDY_SNAPSHOT_COMPRESSION", "lz4")).Extension()),
+		"prefix": fmt.Sprintf("repos/%s/%s/git", owner.Username, repository.Name),
 	})
 }
 
@@ -736,12 +765,12 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) enqueueRepoSync(ctx context.Context, owner, name string) error {
-	key := fmt.Sprintf("repos/%s/%s%s", owner, name, git.ParseSnapshotCompression(getenv("GITDADDY_SNAPSHOT_COMPRESSION", "lz4")).Extension())
+	prefix := fmt.Sprintf("repos/%s/%s/git", owner, name)
 	if err := s.queue.Enqueue(ctx, queue.Job{Type: "repo.sync", Attrs: map[string]string{"owner": owner, "repo": name}}); err != nil {
-		log.Printf("r2 sync queue failed owner=%s repo=%s key=%s error=%v", owner, name, key, err)
+		log.Printf("r2 git sync queue failed owner=%s repo=%s prefix=%s error=%v", owner, name, prefix, err)
 		return err
 	}
-	log.Printf("r2 sync queued owner=%s repo=%s key=%s pending_jobs=%d", owner, name, key, queueLen(s.queue))
+	log.Printf("r2 git sync queued owner=%s repo=%s prefix=%s pending_jobs=%d", owner, name, prefix, queueLen(s.queue))
 	return nil
 }
 
