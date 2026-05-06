@@ -10,6 +10,8 @@ GitDaddy is an open-source distributed Git hosting platform built with Go, Postg
 - Delete repositories and their local bare Git data.
 - Serve Git smart HTTP endpoints for `git clone`, `git fetch`, `git pull`, and `git push`.
 - Authenticate normal Git clients with HTTP Basic auth.
+- Create personal access tokens for Git over HTTPS.
+- Grant collaborators `read`, `write`, or `admin` access.
 - Queue asynchronous repository snapshot sync jobs after push operations.
 - Browse repositories through REST APIs and the Next.js UI.
 - List branches and recent commits.
@@ -45,6 +47,8 @@ Additional API examples:
 
 ```bash
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/stats
+curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"name":"laptop"}' http://localhost:8080/api/tokens
+curl -X PUT -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"role":"write"}' http://localhost:8080/api/repos/<owner>/<repo>/collaborators/<username>
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/repos/<owner>/<repo>/branches
 curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/repos/<owner>/<repo>/file?ref=HEAD&path=README.md"
 curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/repos/<owner>/<repo>/diff?commit=HEAD"

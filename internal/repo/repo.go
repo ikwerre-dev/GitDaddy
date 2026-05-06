@@ -28,12 +28,38 @@ type Store interface {
 	CountByOwner(context.Context, int64) (int, error)
 }
 
+type Role string
+
+const (
+	RoleRead  Role = "read"
+	RoleWrite Role = "write"
+	RoleAdmin Role = "admin"
+)
+
+type Permission struct {
+	UserID int64 `json:"user_id"`
+	RepoID int64 `json:"repo_id"`
+	Role   Role  `json:"role"`
+}
+
+type PermissionStore interface {
+	Grant(context.Context, Permission) error
+	Revoke(context.Context, int64, int64) error
+	ListByRepo(context.Context, int64) ([]Permission, error)
+	Find(context.Context, int64, int64) (Permission, error)
+}
+
 type Service struct {
-	store Store
+	store       Store
+	permissions PermissionStore
 }
 
 func NewService(store Store) *Service {
-	return &Service{store: store}
+	return &Service{store: store, permissions: NewMemoryPermissionStore()}
+}
+
+func NewServiceWithPermissions(store Store, permissions PermissionStore) *Service {
+	return &Service{store: store, permissions: permissions}
 }
 
 func (s *Service) Create(ctx context.Context, ownerID int64, name, visibility string) (Repository, error) {
@@ -76,6 +102,54 @@ func (s *Service) Delete(ctx context.Context, ownerID int64, name string) error 
 
 func (s *Service) CountByOwner(ctx context.Context, ownerID int64) (int, error) {
 	return s.store.CountByOwner(ctx, ownerID)
+}
+
+func (s *Service) Grant(ctx context.Context, repoID, userID int64, role Role) error {
+	if !validRole(role) {
+		return errors.New("role must be read, write, or admin")
+	}
+	return s.permissions.Grant(ctx, Permission{RepoID: repoID, UserID: userID, Role: role})
+}
+
+func (s *Service) Revoke(ctx context.Context, repoID, userID int64) error {
+	return s.permissions.Revoke(ctx, repoID, userID)
+}
+
+func (s *Service) ListPermissions(ctx context.Context, repoID int64) ([]Permission, error) {
+	return s.permissions.ListByRepo(ctx, repoID)
+}
+
+func (s *Service) CanRead(ctx context.Context, repository Repository, userID int64) bool {
+	if repository.Visibility == "public" || repository.OwnerID == userID {
+		return true
+	}
+	perm, err := s.permissions.Find(ctx, repository.ID, userID)
+	return err == nil && roleAtLeast(perm.Role, RoleRead)
+}
+
+func (s *Service) CanWrite(ctx context.Context, repository Repository, userID int64) bool {
+	if repository.OwnerID == userID {
+		return true
+	}
+	perm, err := s.permissions.Find(ctx, repository.ID, userID)
+	return err == nil && roleAtLeast(perm.Role, RoleWrite)
+}
+
+func (s *Service) CanAdmin(ctx context.Context, repository Repository, userID int64) bool {
+	if repository.OwnerID == userID {
+		return true
+	}
+	perm, err := s.permissions.Find(ctx, repository.ID, userID)
+	return err == nil && roleAtLeast(perm.Role, RoleAdmin)
+}
+
+func validRole(role Role) bool {
+	return role == RoleRead || role == RoleWrite || role == RoleAdmin
+}
+
+func roleAtLeast(actual, required Role) bool {
+	order := map[Role]int{RoleRead: 1, RoleWrite: 2, RoleAdmin: 3}
+	return order[actual] >= order[required]
 }
 
 type MemoryStore struct {
@@ -160,4 +234,51 @@ func (s *MemoryStore) CountByOwner(_ context.Context, ownerID int64) (int, error
 		}
 	}
 	return count, nil
+}
+
+type MemoryPermissionStore struct {
+	mu          sync.RWMutex
+	permissions map[int64]map[int64]Permission
+}
+
+func NewMemoryPermissionStore() *MemoryPermissionStore {
+	return &MemoryPermissionStore{permissions: map[int64]map[int64]Permission{}}
+}
+
+func (s *MemoryPermissionStore) Grant(_ context.Context, permission Permission) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.permissions[permission.RepoID] == nil {
+		s.permissions[permission.RepoID] = map[int64]Permission{}
+	}
+	s.permissions[permission.RepoID][permission.UserID] = permission
+	return nil
+}
+
+func (s *MemoryPermissionStore) Revoke(_ context.Context, repoID, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.permissions[repoID] != nil {
+		delete(s.permissions[repoID], userID)
+	}
+	return nil
+}
+
+func (s *MemoryPermissionStore) ListByRepo(_ context.Context, repoID int64) ([]Permission, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	list := []Permission{}
+	for _, permission := range s.permissions[repoID] {
+		list = append(list, permission)
+	}
+	return list, nil
+}
+
+func (s *MemoryPermissionStore) Find(_ context.Context, repoID, userID int64) (Permission, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if permission, ok := s.permissions[repoID][userID]; ok {
+		return permission, nil
+	}
+	return Permission{}, errors.New("permission not found")
 }

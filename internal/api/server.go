@@ -2,8 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/gitdaddy/gitdaddy/internal/auth"
 	"github.com/gitdaddy/gitdaddy/internal/git"
@@ -18,6 +22,7 @@ type Server struct {
 	git     *git.Service
 	objects storage.ObjectStore
 	queue   queue.Queue
+	metrics metrics
 }
 
 func NewServer(auth *auth.Service, repos *repo.Service, git *git.Service, objects storage.ObjectStore, queue queue.Queue) *Server {
@@ -34,6 +39,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/whoami", s.whoami)
 	mux.HandleFunc("GET /api/stats", s.platformStats)
+	mux.HandleFunc("POST /api/tokens", s.createToken)
+	mux.HandleFunc("GET /api/tokens", s.listTokens)
+	mux.HandleFunc("DELETE /api/tokens/{id}", s.deleteToken)
 	mux.HandleFunc("POST /api/repos", s.createRepo)
 	mux.HandleFunc("GET /api/repos", s.listRepos)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}", s.getRepo)
@@ -45,8 +53,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/file", s.repoFile)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/diff", s.repoDiff)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/stats", s.repoStats)
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/collaborators", s.listCollaborators)
+	mux.HandleFunc("PUT /api/repos/{owner}/{repo}/collaborators/{username}", s.grantCollaborator)
+	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}/collaborators/{username}", s.revokeCollaborator)
+	mux.HandleFunc("GET /metrics", s.metricsHandler)
 	mux.HandleFunc("/git/", s.gitHTTP)
-	return cors(mux)
+	return s.observe(cors(mux))
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +129,60 @@ func (s *Server) platformStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name    string `json:"name"`
+		Expires int64  `json:"expires_in_days"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	days := req.Expires
+	if days <= 0 {
+		days = 90
+	}
+	token, plaintext, err := s.auth.CreateToken(r.Context(), user.ID, req.Name, time.Duration(days)*24*time.Hour)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "secret": plaintext})
+}
+
+func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	tokens, err := s.auth.ListTokens(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tokens)
+}
+
+func (s *Server) deleteToken(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.auth.DeleteToken(r.Context(), user.ID, id); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func (s *Server) createRepo(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.currentUser(w, r)
 	if !ok {
@@ -161,7 +227,7 @@ func (s *Server) getRepo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateRepo(w http.ResponseWriter, r *http.Request) {
 	owner, repository, ok := s.resolveRepo(w, r)
-	if !ok || !s.requireOwner(w, r, owner.ID) {
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
 		return
 	}
 	var req struct{ Visibility string }
@@ -178,7 +244,7 @@ func (s *Server) updateRepo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	owner, repository, ok := s.resolveRepo(w, r)
-	if !ok || !s.requireOwner(w, r, owner.ID) {
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
 		return
 	}
 	if err := s.repos.Delete(r.Context(), owner.ID, repository.Name); err != nil {
@@ -270,6 +336,57 @@ func (s *Server) repoStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) listCollaborators(w http.ResponseWriter, r *http.Request) {
+	_, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
+		return
+	}
+	permissions, err := s.repos.ListPermissions(r.Context(), repository.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, permissions)
+}
+
+func (s *Server) grantCollaborator(w http.ResponseWriter, r *http.Request) {
+	_, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
+		return
+	}
+	collaborator, err := s.auth.FindByUsername(r.Context(), r.PathValue("username"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	var req struct{ Role repo.Role }
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := s.repos.Grant(r.Context(), repository.ID, collaborator.ID, req.Role); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "granted"})
+}
+
+func (s *Server) revokeCollaborator(w http.ResponseWriter, r *http.Request) {
+	_, repository, ok := s.resolveRepo(w, r)
+	if !ok || !s.requireRepoRole(w, r, repository, repo.RoleAdmin) {
+		return
+	}
+	collaborator, err := s.auth.FindByUsername(r.Context(), r.PathValue("username"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err := s.repos.Revoke(r.Context(), repository.ID, collaborator.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
 func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 	ownerName, repoName, ok := gitPathParts(r.URL.Path)
 	if !ok {
@@ -293,8 +410,12 @@ func (s *Server) gitHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		if user.ID != owner.ID {
-			http.Error(w, "repository owner required", http.StatusForbidden)
+		if receivePack && !s.repos.CanWrite(r.Context(), repository, user.ID) {
+			http.Error(w, "write permission required", http.StatusForbidden)
+			return
+		}
+		if !receivePack && !s.repos.CanRead(r.Context(), repository, user.ID) {
+			http.Error(w, "read permission required", http.StatusForbidden)
 			return
 		}
 	}
@@ -319,7 +440,12 @@ func (s *Server) resolveRepo(w http.ResponseWriter, r *http.Request) (auth.User,
 		return auth.User{}, repo.Repository{}, false
 	}
 	if repository.Visibility == "private" {
-		if _, ok := s.currentUser(w, r); !ok {
+		user, ok := s.currentUser(w, r)
+		if !ok {
+			return auth.User{}, repo.Repository{}, false
+		}
+		if !s.repos.CanRead(r.Context(), repository, user.ID) {
+			writeError(w, http.StatusForbidden, errString("read permission required"))
 			return auth.User{}, repo.Repository{}, false
 		}
 	}
@@ -356,7 +482,7 @@ func (s *Server) basicUser(w http.ResponseWriter, r *http.Request) (auth.User, b
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return auth.User{}, false
 	}
-	user, err := s.auth.AuthenticatePassword(r.Context(), username, password)
+	user, err := s.auth.AuthenticateGit(r.Context(), username, password)
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", `Basic realm="GitDaddy Git"`)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
@@ -365,13 +491,22 @@ func (s *Server) basicUser(w http.ResponseWriter, r *http.Request) (auth.User, b
 	return user, true
 }
 
-func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request, ownerID int64) bool {
+func (s *Server) requireRepoRole(w http.ResponseWriter, r *http.Request, repository repo.Repository, role repo.Role) bool {
 	user, ok := s.currentUser(w, r)
 	if !ok {
 		return false
 	}
-	if user.ID != ownerID {
-		writeError(w, http.StatusForbidden, errString("repository owner required"))
+	allowed := false
+	switch role {
+	case repo.RoleRead:
+		allowed = s.repos.CanRead(r.Context(), repository, user.ID)
+	case repo.RoleWrite:
+		allowed = s.repos.CanWrite(r.Context(), repository, user.ID)
+	case repo.RoleAdmin:
+		allowed = s.repos.CanAdmin(r.Context(), repository, user.ID)
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, errString(fmt.Sprintf("%s permission required", role)))
 		return false
 	}
 	return true
@@ -419,6 +554,36 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+type metrics struct {
+	requests uint64
+	errors   uint64
+	gitRequests uint64
+}
+
+func (s *Server) observe(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddUint64(&s.metrics.requests, 1)
+		if strings.HasPrefix(r.URL.Path, "/git/") {
+			atomic.AddUint64(&s.metrics.gitRequests, 1)
+		}
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		if recorder.status >= 500 {
+			atomic.AddUint64(&s.metrics.errors, 1)
+		}
+	})
+}
+
+func (s *Server) metricsHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	fmt.Fprintf(w, "gitdaddy_http_requests_total %d\n", atomic.LoadUint64(&s.metrics.requests))
+	fmt.Fprintf(w, "gitdaddy_http_errors_total %d\n", atomic.LoadUint64(&s.metrics.errors))
+	fmt.Fprintf(w, "gitdaddy_git_requests_total %d\n", atomic.LoadUint64(&s.metrics.gitRequests))
+	if sized, ok := s.queue.(interface{ Len() int }); ok {
+		fmt.Fprintf(w, "gitdaddy_queue_depth %d\n", sized.Len())
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {

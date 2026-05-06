@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS permissions (
   PRIMARY KEY (user_id, repo_id)
 );
 
+CREATE TABLE IF NOT EXISTS personal_access_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

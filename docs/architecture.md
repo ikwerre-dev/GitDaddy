@@ -16,8 +16,10 @@ GitDaddy can currently:
 
 - Register users and authenticate them with bearer sessions.
 - Log users out by invalidating bearer sessions.
+- Create personal access tokens for Git over HTTPS without using account passwords.
 - Create repositories with `private` or `public` visibility.
 - Update repository visibility after creation.
+- Grant collaborators `read`, `write`, or `admin` repository roles.
 - Delete repositories from metadata and local bare Git storage.
 - Serve Git smart HTTP transport for normal `git clone`, `git fetch`, `git pull`, and `git push`.
 - Authenticate Git command-line clients with HTTP Basic auth.
@@ -111,6 +113,14 @@ Backend modules:
 - `internal/queue`: asynchronous job queue interface.
 - `internal/worker`: job processor for object storage sync.
 - `internal/api`: REST and Git HTTP handlers.
+
+Authorization model:
+
+- Repository owners have implicit `admin`.
+- `admin` can change settings, delete repositories, and manage collaborators.
+- `write` can push through Git smart HTTP.
+- `read` can clone/fetch private repositories and use repository read APIs.
+- Public repositories can be cloned without credentials, but pushes still require `write`.
 
 All external systems are represented as interfaces. Tests can use in-memory or local implementations.
 

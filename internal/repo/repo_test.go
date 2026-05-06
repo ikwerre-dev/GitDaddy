@@ -51,6 +51,26 @@ func TestCreateAndListRepositories(t *testing.T) {
 	}
 }
 
+func TestRepositoryPermissions(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	created, err := service.Create(context.Background(), 1, "private-demo", "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.CanRead(context.Background(), created, 2) {
+		t.Fatal("unexpected read access before grant")
+	}
+	if err := service.Grant(context.Background(), created.ID, 2, RoleWrite); err != nil {
+		t.Fatal(err)
+	}
+	if !service.CanRead(context.Background(), created, 2) || !service.CanWrite(context.Background(), created, 2) {
+		t.Fatal("expected write grant to include read and write")
+	}
+	if service.CanAdmin(context.Background(), created, 2) {
+		t.Fatal("write grant should not include admin")
+	}
+}
+
 func TestRejectsUnsafeRepositoryNames(t *testing.T) {
 	service := NewService(NewMemoryStore())
 	if _, err := service.Create(context.Background(), 1, "../demo", "private"); err == nil {
